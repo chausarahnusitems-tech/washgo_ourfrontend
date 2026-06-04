@@ -1,17 +1,17 @@
-import { images } from "../assets.js";
-import { services } from "../data/catalog.js";
+import { icons } from "../assets.js";
 import { getVisibleShops } from "../lib/booking.js";
 import { Icon } from "../components/ui/Icon.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { MapPreview } from "../components/map/MapPreview.jsx";
 import { ShopCard } from "../components/ShopCard.jsx";
 
-const serviceTone = {
-  exterior: "bg-wash-50 text-wash-500",
-  interior: "bg-emerald-50 text-emerald-600",
-  detailing: "bg-amber-50 text-amber-600",
-  wax: "bg-slate-100 text-slate-700"
-};
+const homeServiceTiles = [
+  { id: "exterior", icon: icons.carwash },
+  { id: "interior", icon: icons.interiorCleaning },
+  { id: "evCharging", icon: icons.evCharging },
+  { id: "detailing", icon: icons.detailing },
+  { id: "moreServices", icon: icons.more }
+];
 
 export function HomeScreen({ state, t, onLang, onHome, onSearch, onShop, onQuickView }) {
   const visibleShops = getVisibleShops(state.search);
@@ -20,10 +20,14 @@ export function HomeScreen({ state, t, onLang, onHome, onSearch, onShop, onQuick
     <section className="h-full overflow-y-auto px-3.5 pb-5 pt-7">
       <TopBar t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
 
-      <section className="relative h-[226px] overflow-hidden rounded-[20px] bg-[linear-gradient(135deg,#c40000,#ff1d12_58%,#ff6a5d)]">
-        <img src={images.hero} alt="A red car being washed" className="absolute inset-y-0 right-0 h-full w-[84%] object-cover object-[86%_center]" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(196,0,0,0.98)_0%,rgba(224,16,8,0.72)_42%,rgba(224,16,8,0.05)_76%)]" />
-        <div className="absolute left-7 top-7 w-[48%] text-white">
+      <section className="relative aspect-[345/226] overflow-hidden rounded-[20px] bg-[linear-gradient(301deg,#ff0000_0%,#760000_22.6%,#ff0000_48.6%,#9c0000_88.5%)]">
+        <img
+          src={icons.premiumCareForCar}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-y-0 right-0 h-full w-[85.5%] object-fill"
+        />
+        <div className="absolute left-[9.3%] top-[13.7%] w-[48%] text-white">
           <h1 className="font-display text-2xl font-black leading-tight">{t("heroTitle")}</h1>
           <p className="mt-3 text-sm leading-snug text-white/90">{t("heroCopy")}</p>
         </div>
@@ -66,26 +70,26 @@ export function HomeScreen({ state, t, onLang, onHome, onSearch, onShop, onQuick
         <h2 className="font-display text-base font-black">{t("services")}</h2>
       </div>
       <div className="mt-2 grid grid-cols-5 gap-2">
-        {services.map((service) => (
-          <button key={service.id} type="button" className={`grid min-h-[72px] place-items-center rounded-xl px-1 py-2 ${serviceTone[service.id]}`}>
-            <Icon name={service.icon} className="h-6 w-6" />
+        {homeServiceTiles.map((service) => (
+          <button key={service.id} type="button" className="grid min-h-[82px] min-w-0 place-items-center content-start gap-1 rounded-xl bg-transparent px-0 py-0">
+            <img src={service.icon} alt="" aria-hidden="true" className="h-[60px] w-[60px] max-w-full object-contain" />
             <span className="text-center text-[0.6rem] leading-tight text-ink">{t(service.id)}</span>
           </button>
         ))}
-        <button type="button" className="grid min-h-[72px] place-items-center rounded-xl bg-neutral-100 px-1 py-2 text-ink">
-          <Icon name="Filter" className="h-6 w-6" />
-          <span className="text-center text-[0.6rem] leading-tight">{t("moreServices")}</span>
-        </button>
       </div>
 
-      <section className="mt-5 grid min-h-[132px] grid-cols-[1fr_112px] items-center overflow-hidden rounded-[20px] bg-[linear-gradient(135deg,#fff0ee,#ffe2df)] p-5">
-        <div>
+      <section className="relative mt-5 min-h-[132px] overflow-hidden rounded-[20px] bg-wash-50">
+        <div className="relative z-10 w-[46%] px-5 py-5">
           <h2 className="font-display text-xl font-black">{t("promoTitle")}</h2>
           <p className="mt-2 text-sm leading-snug">{t("promoCopy")}</p>
         </div>
-        <div className="grid h-24 place-items-center rounded-full bg-[linear-gradient(135deg,#ffdbd7,#ef3124)] text-wash-500">
-          <Icon name="Car" className="h-12 w-12 text-white" />
-        </div>
+        <img
+          src={icons.farFromHome}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-y-0 right-0 h-full w-[62%] object-cover object-right"
+        />
+        <div className="absolute inset-y-0 left-[35%] z-[1] w-16 bg-[linear-gradient(90deg,#fff0ee_0%,rgba(255,240,238,0)_100%)]" />
       </section>
     </section>
   );

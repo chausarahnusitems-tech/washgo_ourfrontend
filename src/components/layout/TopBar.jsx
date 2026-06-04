@@ -1,5 +1,6 @@
 import { Icon } from "../ui/Icon.jsx";
 import { IconButton } from "../ui/Button.jsx";
+import { icons } from "../../assets.js";
 
 export function TopBar({ compact = false, title, subtitle, t, lang, onLang, onBack, onHome }) {
   return (
@@ -14,10 +15,9 @@ export function TopBar({ compact = false, title, subtitle, t, lang, onLang, onBa
             type="button"
             onClick={onHome}
             aria-label="Washgo home"
-            className="inline-flex min-h-11 items-center gap-2 border-0 bg-transparent p-0 font-display text-lg font-black text-wash-500"
+            className="inline-flex min-h-11 shrink-0 items-center border-0 bg-transparent p-0"
           >
-            <Icon name="Car" className="h-5 w-5" />
-            <span>WASHGO</span>
+            <img src={icons.washgoLogo} alt="Washgo" className="h-[31px] w-[79px] object-contain" />
           </button>
         )}
 

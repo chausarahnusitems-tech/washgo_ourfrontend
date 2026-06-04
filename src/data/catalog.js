@@ -1,6 +1,6 @@
 export const plans = [
-  { id: "basic", tokens: 50, price: "50" },
-  { id: "premium", tokens: 100, price: "100", badge: true }
+  { id: "basic", tokens: 50, price: "$9.99/" },
+  { id: "premium", tokens: 100, price: "$19.99/", badge: true }
 ];
 
 export const shops = [

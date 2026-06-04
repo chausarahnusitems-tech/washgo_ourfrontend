@@ -1,4 +1,5 @@
 import { plans } from "../data/catalog.js";
+import { icons } from "../assets.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 
@@ -11,14 +12,12 @@ export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue
             type="button"
             onClick={onHome}
             aria-label="Washgo home"
-            className="inline-flex min-h-11 items-center gap-2 border-0 bg-transparent p-0 font-display text-lg font-black text-wash-500"
+            className="inline-flex min-h-11 items-center border-0 bg-transparent p-0"
           >
-            <Icon name="Car" className="h-5 w-5" />
-            <span>WASHGO</span>
+            <img src={icons.washgoLogo} alt="Washgo" className="h-[31px] w-[79px] object-contain" />
           </button>
           <div className="min-w-0">
             <h1 className="m-0 font-display text-[1.35rem] font-black leading-none text-ink">{t("choosePlan")}</h1>
-            <p className="mt-2 text-sm leading-snug text-neutral-500">{t("planSubtitle")}</p>
           </div>
           <div className="inline-flex h-9 shrink-0 rounded-full bg-neutral-100 p-1" role="group" aria-label="Language">
             {["en", "vi"].map((code) => (
@@ -68,7 +67,7 @@ export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue
                 </span>
                 <span className="text-right">
                   <strong className="block text-lg font-black">{plan.price}</strong>
-                  <small className="text-neutral-500">{t("tokens")}</small>
+                  <small className="text-neutral-500">{t("month")}</small>
                 </span>
               </button>
             );
