@@ -70,34 +70,46 @@ Out of scope for the first prototype:
 
 ## Run the Prototype
 
-From this folder, open the prototype directly:
+Install dependencies:
 
 ```bash
-open index.html
+npm install
 ```
 
-Or serve it locally:
+Start the React dev server:
 
 ```bash
-python3 -m http.server 8000
+npm run dev
 ```
 
 Then open:
 
 ```text
-http://localhost:8000
+http://localhost:5173
 ```
 
-No package install, build command, or local server is required for the current static prototype.
+Create a production build:
+
+```bash
+npm run build
+```
 
 ## Project Structure
 
 ```text
 .
 ├── index.html
+├── package.json
+├── tailwind.config.js
+├── vite.config.js
 ├── src/
-│   ├── app.js
-│   └── styles.css
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── styles.css
+│   ├── components/
+│   ├── data/
+│   ├── lib/
+│   └── screens/
 ├── assets/
 │   └── images/
 │       ├── car-icon.png
