@@ -1,6 +1,37 @@
+import { icons } from "../../assets.js";
 import { Icon } from "../ui/Icon.jsx";
 
+const miniMapPins = [
+  "left-[25%] top-[43%]",
+  "left-[39%] top-[78%]",
+  "left-[72%] top-[51%]"
+];
+
+export function MiniMapCard() {
+  return (
+    <div className="relative aspect-[345/201] overflow-hidden rounded-[18px] border border-[#dfe9e9] bg-[#eef7f8]">
+      <img
+        src={icons.miniMapBase}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full object-cover object-center"
+      />
+      {miniMapPins.map((position) => (
+        <img
+          key={position}
+          src={icons.mapCarPin}
+          alt=""
+          aria-hidden="true"
+          className={`absolute ${position} h-10 w-10 -translate-x-1/2 -translate-y-1/2`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function MapPreview({ large = false }) {
+  if (!large) return <MiniMapCard />;
+
   return (
     <div className={`map-preview relative overflow-hidden ${large ? "h-[356px] rounded-none border-0" : "h-[198px] rounded-[18px] border border-[#dfe9e9]"}`}>
       <span className="map-road road-a" />
