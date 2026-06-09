@@ -1,22 +1,16 @@
 import { plans } from "../data/catalog.js";
-import { icons } from "../assets.js";
-import { Button } from "../components/ui/Button.jsx";
+import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 
-export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue }) {
+export function PlansScreen({ state, t, onLang, onBack, onSelectPlan, onContinue }) {
   return (
     <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white lg:bg-mist">
       <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-7">
         <div className="mx-auto w-full max-w-xl">
-        <div className="mb-7 grid min-w-0 grid-cols-[auto_1fr_auto] items-start gap-3 lg:hidden">
-          <button
-            type="button"
-            onClick={onHome}
-            aria-label="Washgo home"
-            className="inline-flex min-h-11 items-center border-0 bg-transparent p-0"
-          >
-            <img src={icons.washgoLogo} alt="Washgo" className="h-[31px] w-[79px] object-contain" />
-          </button>
+        <div className="mb-7 grid min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 lg:hidden">
+          <IconButton label={t("back")} onClick={onBack}>
+            <Icon name="ArrowLeft" className="h-5 w-5" />
+          </IconButton>
           <div className="min-w-0">
             <h1 className="m-0 font-display text-[1.35rem] font-black leading-none text-ink">{t("choosePlan")}</h1>
           </div>
@@ -36,7 +30,12 @@ export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue
             ))}
           </div>
         </div>
-        <h1 className="mb-2 hidden font-display text-2xl font-black lg:block">{t("choosePlan")}</h1>
+        <div className="mb-2 hidden items-center gap-3 lg:flex">
+          <IconButton label={t("back")} variant="secondary" onClick={onBack}>
+            <Icon name="ArrowLeft" className="h-5 w-5" />
+          </IconButton>
+          <h1 className="font-display text-2xl font-black">{t("choosePlan")}</h1>
+        </div>
         <div className="mt-7 grid gap-5">
           {plans.map((plan) => {
             const selected = state.selectedPlan === plan.id;

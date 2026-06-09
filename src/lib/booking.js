@@ -2,7 +2,8 @@ import { dates, plans, services, shops } from "../data/catalog.js";
 
 export const initialState = {
   lang: "en",
-  screen: "plans",
+  screen: "home",
+  prevScreen: null,
   selectedPlan: "premium",
   tokens: 0,
   stamps: 4,

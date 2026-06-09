@@ -69,6 +69,16 @@ export default function App() {
 
   const goHome = useCallback(() => setScreen("home"), [setScreen]);
 
+  // Open the membership plans, remembering where we came from so the back
+  // button can return there (plans is reached from the account page).
+  const openPlans = useCallback(() => {
+    setState((prev) => ({ ...prev, screen: "plans", prevScreen: prev.screen, quickShop: null, mapShop: null }));
+  }, []);
+
+  const goBack = useCallback(() => {
+    setState((prev) => ({ ...prev, screen: prev.prevScreen ?? "home", quickShop: null, mapShop: null }));
+  }, []);
+
   const selectPlan = useCallback((selectedPlan) => {
     setState((prev) => ({ ...prev, selectedPlan }));
   }, []);
@@ -76,7 +86,7 @@ export default function App() {
   const continuePlan = useCallback(() => {
     setState((prev) => {
       const tokens = prev.selectedPlan === "premium" ? 100 : 50;
-      return { ...prev, tokens, screen: "home" };
+      return { ...prev, tokens, screen: prev.prevScreen ?? "home" };
     });
   }, []);
 
@@ -179,6 +189,7 @@ export default function App() {
             t={t}
             onLang={setLang}
             onHome={goHome}
+            onBack={goBack}
             onSelectPlan={selectPlan}
             onContinue={continuePlan}
           />
@@ -255,7 +266,7 @@ export default function App() {
             t={t}
             onLang={setLang}
             onHome={goHome}
-            onPlans={() => setScreen("plans")}
+            onPlans={openPlans}
             onVouchers={() => setScreen("vouchers")}
             onReset={resetDemo}
           />
