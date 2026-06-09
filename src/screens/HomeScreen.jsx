@@ -5,7 +5,6 @@ import { Icon } from "../components/ui/Icon.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { MapPreview } from "../components/map/MapPreview.jsx";
-import { MapPlaceholder } from "../components/map/MapPlaceholder.jsx";
 import { ShopCard } from "../components/ShopCard.jsx";
 import { NearbyCard } from "../components/NearbyCard.jsx";
 
@@ -25,7 +24,7 @@ export function HomeScreen(props) {
 /* ------------------------------------------------------------------ */
 /* Mobile (original single-column marketplace)                         */
 /* ------------------------------------------------------------------ */
-function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView }) {
+function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService }) {
   const visibleShops = getVisibleShops(state.search);
 
   return (
@@ -64,9 +63,14 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView })
           {state.tokens} {t("tokenShort")}
         </span>
       </div>
-      <div className="mt-2">
+      <button
+        type="button"
+        onClick={onExplore}
+        aria-label={t("explore")}
+        className="mt-2 block w-full overflow-hidden rounded-[18px] bg-transparent p-0 text-left"
+      >
         <MapPreview />
-      </div>
+      </button>
 
       <div className="mt-3 grid gap-3">
         {visibleShops.length ? (
@@ -83,7 +87,12 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView })
       </div>
       <div className="mt-2 grid grid-cols-5 gap-2">
         {homeServiceTiles.map((service) => (
-          <button key={service.id} type="button" className="grid min-h-[82px] min-w-0 place-items-center content-start gap-1 rounded-xl bg-transparent px-0 py-0">
+          <button
+            key={service.id}
+            type="button"
+            onClick={() => onService(service.id)}
+            className="grid min-h-[82px] min-w-0 place-items-center content-start gap-1 rounded-xl bg-transparent px-0 py-0"
+          >
             <img src={service.icon} alt="" aria-hidden="true" className="h-[60px] w-[60px] max-w-full object-contain" />
             <span className="text-center text-[0.6rem] leading-tight text-ink">{t(service.id)}</span>
           </button>
@@ -110,7 +119,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView })
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, onShop, onExplore, onBook, onBookings }) {
+function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBookings }) {
   const nearbyShops = getVisibleShops("");
   const upcoming = state.booking ?? { shop: "MWW 1234", date: "Jul 6, 2026", time: "2:00 PM" };
 
@@ -167,7 +176,14 @@ function HomeDesktop({ state, t, onShop, onExplore, onBook, onBookings }) {
             </div>
           </DashCard>
 
-          <MapPlaceholder className="h-48 w-full" />
+          <button
+            type="button"
+            onClick={onExplore}
+            aria-label={t("explore")}
+            className="block w-full bg-transparent p-0 text-left transition hover:opacity-95"
+          >
+            <MapPreview className="h-48 w-full" />
+          </button>
         </aside>
 
         {/* Right column */}
@@ -215,13 +231,15 @@ function HomeDesktop({ state, t, onShop, onExplore, onBook, onBookings }) {
             <h2 className="font-display text-lg font-black">{t("services")}</h2>
             <div className="mt-3 grid grid-cols-5 gap-4">
               {homeServiceTiles.map((service) => (
-                <div
+                <button
                   key={service.id}
-                  className="flex flex-col items-center gap-2 rounded-2xl bg-wash-50 px-2 py-5"
+                  type="button"
+                  onClick={() => onService(service.id)}
+                  className="flex flex-col items-center gap-2 rounded-2xl bg-wash-50 px-2 py-5 transition hover:bg-wash-100"
                 >
                   <img src={service.icon} alt="" aria-hidden="true" className="h-14 w-14 object-contain" />
                   <span className="text-center text-xs font-semibold text-ink">{t(service.id)}</span>
-                </div>
+                </button>
               ))}
             </div>
           </section>

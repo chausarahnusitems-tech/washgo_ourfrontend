@@ -14,6 +14,7 @@ export const initialState = {
   selectedTime: "12.00PM",
   search: "",
   quickShop: null,
+  mapShop: null,
   vehicle: {
     model: "BMW 1234",
     plate: "51G-248.19",
@@ -56,7 +57,9 @@ export function getVisibleShops(search) {
   if (!needle) return shops;
 
   return shops.filter((shop) =>
-    `${shop.name} ${shop.district} ${shop.address}`.toLowerCase().includes(needle)
+    `${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`
+      .toLowerCase()
+      .includes(needle)
   );
 }
 

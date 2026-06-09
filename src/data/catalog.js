@@ -15,7 +15,9 @@ export const shops = [
     starting: 10,
     wait: "12 min",
     services: ["exterior", "interior", "detailing"],
-    imagePosition: "object-[58%_center]"
+    imagePosition: "object-[58%_center]",
+    lat: 10.8045,
+    lng: 106.7385
   },
   {
     id: "saigon",
@@ -28,7 +30,9 @@ export const shops = [
     starting: 8,
     wait: "18 min",
     services: ["exterior", "wax", "interior"],
-    imagePosition: "object-[42%_center]"
+    imagePosition: "object-[42%_center]",
+    lat: 10.8108,
+    lng: 106.7156
   },
   {
     id: "lotus",
@@ -41,9 +45,14 @@ export const shops = [
     starting: 12,
     wait: "25 min",
     services: ["detailing", "wax", "interior"],
-    imagePosition: "object-[74%_center]"
+    imagePosition: "object-[74%_center]",
+    lat: 10.7898,
+    lng: 106.7218
   }
 ];
+
+// Approximate "current location" used to centre the map and drop the user pin.
+export const userLocation = { lat: 10.7995, lng: 106.7305 };
 
 export const services = [
   { id: "exterior", token: 5, icon: "Car" },

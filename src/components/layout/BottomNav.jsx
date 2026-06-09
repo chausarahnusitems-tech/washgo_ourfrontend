@@ -4,7 +4,7 @@ import { cx } from "../../lib/cx.js";
 const navItems = [
   ["home", "Home", "home"],
   ["bookings", "Calendar", "bookings"],
-  ["rewards", "Gift", "rewards"],
+  ["chat", "MessageCircle", "chat"],
   ["account", "User", "account"]
 ];
 
@@ -15,7 +15,7 @@ export function BottomNav({ active, onScreen, t, className }) {
         <button
           key={screen}
           type="button"
-          onClick={() => onScreen(screen)}
+          onClick={() => (screen === "chat" ? undefined : onScreen(screen))}
           className={`grid min-w-0 place-items-center content-center gap-1 text-[0.68rem] ${
             active === screen ? "font-extrabold text-wash-500" : "text-neutral-500"
           }`}

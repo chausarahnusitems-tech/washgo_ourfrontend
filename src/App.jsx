@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { copy } from "./data/copy.js";
-import { shops } from "./data/catalog.js";
+import { shops, services as serviceCatalog } from "./data/catalog.js";
 import {
   getCurrentShop,
   getSelectedDateLabel,
@@ -28,8 +28,8 @@ import { AccountScreen } from "./screens/AccountScreen.jsx";
 const bottomNavByScreen = {
   home: "home",
   bookings: "bookings",
-  rewards: "rewards",
-  vouchers: "rewards",
+  rewards: "account",
+  vouchers: "account",
   account: "account"
 };
 
@@ -60,7 +60,7 @@ export default function App() {
   }, [state.lang]);
 
   const setScreen = useCallback((screen) => {
-    setState((prev) => ({ ...prev, screen, quickShop: null }));
+    setState((prev) => ({ ...prev, screen, quickShop: null, mapShop: null }));
   }, []);
 
   const setLang = useCallback((lang) => {
@@ -90,8 +90,28 @@ export default function App() {
 
   const goExplore = useCallback(() => setScreen("explore"), [setScreen]);
 
+  // Jump to the map page pre-filtered by a service (home service tiles).
+  const exploreService = useCallback((serviceId) => {
+    const seed = serviceCatalog.some((service) => service.id === serviceId) ? serviceId : "";
+    setState((prev) => ({ ...prev, screen: "explore", search: seed, quickShop: null, mapShop: null }));
+  }, []);
+
   const setSearch = useCallback((search) => {
     setState((prev) => ({ ...prev, search }));
+  }, []);
+
+  // Map page: select a shop to surface its detail card (does not navigate).
+  const setMapShop = useCallback((mapShop) => {
+    setState((prev) => ({ ...prev, mapShop }));
+  }, []);
+
+  const closeMapShop = useCallback(() => {
+    setState((prev) => ({ ...prev, mapShop: null }));
+  }, []);
+
+  // "Book Now" from the map detail card -> straight into booking.
+  const bookShop = useCallback((selectedShop) => {
+    setState((prev) => ({ ...prev, selectedShop, screen: "booking", quickShop: null, mapShop: null }));
   }, []);
 
   const setQuickShop = useCallback((quickShop) => {
@@ -171,8 +191,9 @@ export default function App() {
             onLang={setLang}
             onHome={goHome}
             onSearch={setSearch}
-            onShop={selectShop}
-            onQuickView={setQuickShop}
+            onSelectMapShop={setMapShop}
+            onCloseMapShop={closeMapShop}
+            onBook={bookShop}
           />
         );
       case "detail":
@@ -251,6 +272,7 @@ export default function App() {
             onShop={selectShop}
             onQuickView={setQuickShop}
             onExplore={goExplore}
+            onService={exploreService}
             onBook={startBooking}
             onBookings={() => setScreen("bookings")}
           />

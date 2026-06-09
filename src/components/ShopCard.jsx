@@ -1,10 +1,16 @@
 import { images } from "../assets.js";
+import { cx } from "../lib/cx.js";
 import { Icon } from "./ui/Icon.jsx";
 import { IconButton } from "./ui/Button.jsx";
 
-export function ShopCard({ shop, t, onSelect, onQuickView }) {
+export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
   return (
-    <article className="grid grid-cols-[84px_1fr] gap-3 rounded-[18px] border border-black/10 bg-white p-2">
+    <article
+      className={cx(
+        "grid grid-cols-[84px_1fr] gap-3 rounded-[18px] border bg-white p-2 transition",
+        active ? "border-wash-500 ring-2 ring-wash-200" : "border-black/10"
+      )}
+    >
       <button
         type="button"
         onClick={() => onSelect(shop.id)}

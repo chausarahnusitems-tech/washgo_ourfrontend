@@ -27,6 +27,7 @@ import {
   TriangleAlert,
   User,
   WalletCards,
+  X,
   Zap
 } from "lucide-react";
 
@@ -59,6 +60,7 @@ const icons = {
   TriangleAlert,
   User,
   WalletCards,
+  X,
   Zap
 };
 
