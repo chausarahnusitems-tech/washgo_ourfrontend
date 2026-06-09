@@ -13,6 +13,7 @@ import { Button } from "./components/ui/Button.jsx";
 import { ShopCard } from "./components/ShopCard.jsx";
 import { PlansScreen } from "./screens/PlansScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
+import { ExploreScreen } from "./screens/ExploreScreen.jsx";
 import { DetailScreen } from "./screens/DetailScreen.jsx";
 import { BookingScreen } from "./screens/BookingScreen.jsx";
 import { ConfirmationScreen } from "./screens/ConfirmationScreen.jsx";
@@ -21,11 +22,22 @@ import { RewardsScreen } from "./screens/RewardsScreen.jsx";
 import { VouchersScreen } from "./screens/VouchersScreen.jsx";
 import { AccountScreen } from "./screens/AccountScreen.jsx";
 
-const navByScreen = {
+// Controls the mobile bottom-nav highlight + presence. Screens absent from
+// this map (detail, booking, confirmation, explore, plans) render their own
+// footer / are desktop-only, so they show no bottom nav.
+const bottomNavByScreen = {
   home: "home",
   bookings: "bookings",
   rewards: "rewards",
   vouchers: "rewards",
+  account: "account"
+};
+
+// Controls the desktop top-nav highlight.
+const topNavByScreen = {
+  explore: "explore",
+  detail: "explore",
+  bookings: "bookings",
   account: "account"
 };
 
@@ -71,6 +83,12 @@ export default function App() {
   const selectShop = useCallback((selectedShop) => {
     setState((prev) => ({ ...prev, selectedShop, screen: "detail", quickShop: null }));
   }, []);
+
+  const startBooking = useCallback(() => {
+    setState((prev) => ({ ...prev, screen: "booking", quickShop: null }));
+  }, []);
+
+  const goExplore = useCallback(() => setScreen("explore"), [setScreen]);
 
   const setSearch = useCallback((search) => {
     setState((prev) => ({ ...prev, search }));
@@ -145,14 +163,29 @@ export default function App() {
             onContinue={continuePlan}
           />
         );
+      case "explore":
+        return (
+          <ExploreScreen
+            state={state}
+            t={t}
+            onLang={setLang}
+            onHome={goHome}
+            onSearch={setSearch}
+            onShop={selectShop}
+            onQuickView={setQuickShop}
+          />
+        );
       case "detail":
         return (
           <DetailScreen
             shop={currentShop}
+            state={state}
             t={t}
             onBack={goHome}
             onBooking={() => setScreen("booking")}
             onQuickView={setQuickShop}
+            onShop={selectShop}
+            onSearch={setSearch}
           />
         );
       case "booking":
@@ -217,16 +250,26 @@ export default function App() {
             onSearch={setSearch}
             onShop={selectShop}
             onQuickView={setQuickShop}
+            onExplore={goExplore}
+            onBook={startBooking}
+            onBookings={() => setScreen("bookings")}
           />
         );
     }
   })();
 
   return (
-    <DeviceShell activeNav={navByScreen[state.screen]} onScreen={setScreen} t={t}>
+    <DeviceShell
+      activeNav={bottomNavByScreen[state.screen]}
+      topActive={topNavByScreen[state.screen]}
+      onScreen={setScreen}
+      t={t}
+      lang={state.lang}
+      onLang={setLang}
+    >
       {screen}
       {quickShop ? (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/35 p-4">
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 p-4 lg:items-center">
           <div className="w-full max-w-[370px] rounded-[22px] bg-white p-3 shadow-device">
             <div className="mx-auto mb-3 h-1.5 w-11 rounded-full bg-neutral-200" />
             <ShopCard shop={quickShop} t={t} onSelect={selectShop} onQuickView={setQuickShop} />

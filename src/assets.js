@@ -1,5 +1,6 @@
 import heroImage from "../assets/images/car-wash-hero.png";
 import profileImage from "../assets/images/profile-face.png";
+import carImage from "../assets/images/car-icon.png";
 import carwashIcon from "./assets/icons/carwash.svg";
 import detailingIcon from "./assets/icons/detailing.svg";
 import evChargingIcon from "./assets/icons/ev-charging.svg";
@@ -13,7 +14,8 @@ import washgoLogo from "./assets/icons/washgologo.svg";
 
 export const images = {
   hero: heroImage,
-  profile: profileImage
+  profile: profileImage,
+  car: carImage
 };
 
 export const icons = {

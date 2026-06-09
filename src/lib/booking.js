@@ -15,6 +15,7 @@ export const initialState = {
   search: "",
   quickShop: null,
   vehicle: {
+    model: "BMW 1234",
     plate: "51G-248.19",
     notes: ""
   }

@@ -5,7 +5,8 @@ import { BookingCard } from "./shared/BookingCard.jsx";
 
 export function ConfirmationScreen({ state, shop, t, onRewards, onHome }) {
   return (
-    <section className="h-full overflow-y-auto bg-white px-4 py-7 text-center">
+    <section className="h-full overflow-y-auto bg-white px-4 py-7 text-center lg:bg-mist">
+      <div className="mx-auto w-full max-w-xl">
       <div className="mx-auto mt-5 grid h-16 w-16 place-items-center rounded-full bg-wash-500 text-white">
         <Icon name="Check" className="h-8 w-8" />
       </div>
@@ -20,6 +21,7 @@ export function ConfirmationScreen({ state, shop, t, onRewards, onHome }) {
       <div className="mt-4 grid grid-cols-2 gap-3">
         <Button variant="secondary" onClick={onRewards}>{t("viewRewards")}</Button>
         <Button onClick={onHome}>{t("bookAnother")}</Button>
+      </div>
       </div>
     </section>
   );

@@ -5,9 +5,10 @@ import { Icon } from "../components/ui/Icon.jsx";
 
 export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue }) {
   return (
-    <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white">
+    <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white lg:bg-mist">
       <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-7">
-        <div className="mb-7 grid min-w-0 grid-cols-[auto_1fr_auto] items-start gap-3">
+        <div className="mx-auto w-full max-w-xl">
+        <div className="mb-7 grid min-w-0 grid-cols-[auto_1fr_auto] items-start gap-3 lg:hidden">
           <button
             type="button"
             onClick={onHome}
@@ -35,6 +36,7 @@ export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue
             ))}
           </div>
         </div>
+        <h1 className="mb-2 hidden font-display text-2xl font-black lg:block">{t("choosePlan")}</h1>
         <div className="mt-7 grid gap-5">
           {plans.map((plan) => {
             const selected = state.selectedPlan === plan.id;
@@ -83,11 +85,14 @@ export function PlansScreen({ state, t, onLang, onHome, onSelectPlan, onContinue
             <strong className="text-sm">{t("guarantee")}</strong>
           </div>
         </div>
+        </div>
       </section>
       <footer className="border-t border-black/20 bg-white p-4">
-        <Button onClick={onContinue} className="w-full rounded-2xl">
-          {t("continue")}
-        </Button>
+        <div className="mx-auto w-full max-w-xl">
+          <Button onClick={onContinue} className="w-full rounded-2xl">
+            {t("continue")}
+          </Button>
+        </div>
       </footer>
     </div>
   );

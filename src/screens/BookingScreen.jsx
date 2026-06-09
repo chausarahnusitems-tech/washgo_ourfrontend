@@ -15,7 +15,8 @@ export function BookingScreen({ state, shop, t, onLang, onBack, onDate, onTime, 
 
   return (
     <>
-      <section className="h-full overflow-y-auto overflow-x-hidden bg-white px-3.5 pb-5 pt-7">
+      <section className="h-full overflow-y-auto overflow-x-hidden bg-white px-3.5 pb-5 pt-7 lg:bg-mist">
+        <div className="mx-auto w-full max-w-2xl">
         <TopBar
           compact
           title={t("bookNow")}
@@ -170,9 +171,11 @@ export function BookingScreen({ state, shop, t, onLang, onBack, onDate, onTime, 
             </div>
           </div>
         </section>
+        </div>
       </section>
 
       <footer className="border-t border-black/20 bg-white px-2 py-4">
+        <div className="mx-auto w-full max-w-2xl">
         <Button onClick={onConfirm} disabled={!total} className="min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
@@ -181,6 +184,7 @@ export function BookingScreen({ state, shop, t, onLang, onBack, onDate, onTime, 
           </span>
           <Icon name="ArrowLeft" className="h-5 w-5 rotate-180" />
         </Button>
+        </div>
       </footer>
     </>
   );

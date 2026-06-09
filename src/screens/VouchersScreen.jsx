@@ -32,9 +32,10 @@ export function VouchersScreen({ state, t, onLang, onHome }) {
   const vouchers = currentVouchers(state.voucher, t);
 
   return (
-    <section className="grid h-full content-start gap-4 overflow-y-auto bg-white px-4 py-7">
+    <section className="h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
+      <div className="mx-auto grid w-full max-w-2xl content-start gap-4">
       <TopBar compact title={t("currentVouchers")} subtitle={`${vouchers.length} ${t("voucherCount")}`} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
-      <div className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {vouchers.map((voucher) => (
           <article
             key={voucher.id}
@@ -60,6 +61,7 @@ export function VouchersScreen({ state, t, onLang, onHome }) {
             </Button>
           </article>
         ))}
+      </div>
       </div>
     </section>
   );
