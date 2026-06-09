@@ -4,8 +4,11 @@ import {
   Calendar,
   Car,
   Check,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Coins,
+  Droplets,
   Filter,
   Gift,
   Heart,
@@ -13,14 +16,19 @@ import {
   Home,
   LocateFixed,
   MapPin,
+  MessageCircle,
   ReceiptText,
+  RotateCcw,
   Search,
   Share2,
   ShieldCheck,
   Sparkles,
   Star,
+  TriangleAlert,
   User,
-  WalletCards
+  WalletCards,
+  X,
+  Zap
 } from "lucide-react";
 
 const icons = {
@@ -29,8 +37,11 @@ const icons = {
   Calendar,
   Car,
   Check,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Coins,
+  Droplets,
   Filter,
   Gift,
   Heart,
@@ -38,14 +49,19 @@ const icons = {
   Home,
   LocateFixed,
   MapPin,
+  MessageCircle,
   ReceiptText,
+  RotateCcw,
   Search,
   Share2,
   ShieldCheck,
   Sparkles,
   Star,
+  TriangleAlert,
   User,
-  WalletCards
+  WalletCards,
+  X,
+  Zap
 };
 
 export function Icon({ name, className = "", strokeWidth = 2 }) {

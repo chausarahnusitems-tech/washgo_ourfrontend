@@ -1,60 +1,30 @@
-import { icons } from "../../assets.js";
-import { Icon } from "../ui/Icon.jsx";
+import { shops, userLocation } from "../../data/catalog.js";
+import { InteractiveMap } from "./InteractiveMap.jsx";
 
-const miniMapPins = [
-  "left-[25%] top-[43%]",
-  "left-[39%] top-[78%]",
-  "left-[72%] top-[51%]"
-];
+// MiniMapCard / MapPreview render a static (non-interactive) snapshot of the
+// real map with the car-wash pins. They are click-through, so call sites can
+// wrap them in a button that navigates to the full map page.
 
-export function MiniMapCard() {
+export function MiniMapCard({ className }) {
   return (
-    <div className="relative aspect-[345/201] overflow-hidden rounded-[18px] border border-[#dfe9e9] bg-[#eef7f8]">
-      <img
-        src={icons.miniMapBase}
-        alt=""
-        aria-hidden="true"
-        className="absolute inset-0 h-full w-full object-cover object-center"
-      />
-      {miniMapPins.map((position) => (
-        <img
-          key={position}
-          src={icons.mapCarPin}
-          alt=""
-          aria-hidden="true"
-          className={`absolute ${position} h-10 w-10 -translate-x-1/2 -translate-y-1/2`}
-        />
-      ))}
-    </div>
+    <InteractiveMap
+      interactive={false}
+      shops={shops}
+      userLocation={userLocation}
+      className={className ?? "aspect-[345/201] w-full"}
+      rounded="rounded-[18px]"
+    />
   );
 }
 
-export function MapPreview({ large = false }) {
-  if (!large) return <MiniMapCard />;
-
+export function MapPreview({ large = false, className }) {
   return (
-    <div className={`map-preview relative overflow-hidden ${large ? "h-[356px] rounded-none border-0" : "h-[198px] rounded-[18px] border border-[#dfe9e9]"}`}>
-      <span className="map-road road-a" />
-      <span className="map-road road-b" />
-      <span className="map-road road-c" />
-      <span className="absolute left-3 top-3 text-sm font-black text-ink/60">Thảo Điền</span>
-      <span className="absolute right-3 top-10 text-sm font-black text-ink/60">Bình Thạnh</span>
-      <span className="absolute bottom-3 left-3 text-sm font-black text-ink/60">An Khánh</span>
-      <span className="absolute left-[48%] top-[39%] grid h-14 w-14 place-items-center rounded-full border-[8px] border-cyan-500/20 bg-cyan-500 text-white shadow-lg">
-        <Icon name="MapPin" className="h-5 w-5" />
-      </span>
-      {[
-        ["left-[24%] top-[55%]"],
-        ["left-[70%] top-[48%]"],
-        ["left-[36%] top-[72%]"]
-      ].map(([position]) => (
-        <span
-          key={position}
-          className={`absolute ${position} grid h-9 w-9 place-items-center rounded-full border-[3px] border-white bg-wash-500 text-white shadow-lg`}
-        >
-          <Icon name="Car" className="h-4 w-4" />
-        </span>
-      ))}
-    </div>
+    <InteractiveMap
+      interactive={false}
+      shops={shops}
+      userLocation={userLocation}
+      className={className ?? (large ? "h-[356px] w-full" : "aspect-[345/201] w-full")}
+      rounded={large ? "rounded-none" : "rounded-[18px]"}
+    />
   );
 }
