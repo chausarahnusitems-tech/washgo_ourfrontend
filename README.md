@@ -14,12 +14,16 @@ The prototype supports both English and Vietnamese language options.
 
 ### 1. User Onboarding
 
-Users choose a token plan before using the marketplace:
+The app opens directly on the **Home** marketplace (seeded with the premium plan's
+100-token balance). Choosing or upgrading a token plan is now an optional step
+reached from **Account → Upgrade Plan**:
 
 - Basic: 50 tokens
 - Premium: 100 tokens
 
-Tokens are the marketplace currency used to pay for car wash bookings.
+Tokens are the marketplace currency used to pay for car wash bookings. The
+membership plans screen includes a back button that returns to the screen it was
+opened from.
 
 ### 2. Marketplace Discovery
 
@@ -47,6 +51,68 @@ After a user confirms a booking and pays with tokens:
 - The user's journey card gains one stamp
 - Once five stamps are collected, the user receives one free car wash voucher
 - The free voucher can be shown as redeemable at any participating car wash shop
+
+## Implementation Status
+
+Audited against the flows above. Status reflects the clickable prototype, not a
+production build.
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Home as landing page | ✅ Done | Opens on Home; tokens seeded to 100. |
+| Membership plans from Account | ✅ Done | `Account → Upgrade Plan`; plans screen has a back button. |
+| English / Vietnamese toggle | ✅ Done | Some `aria-label`s are still hardcoded English (see gaps). |
+| Marketplace browse (cards + search) | ✅ Done | Search filters by name/district/address/services. |
+| Map / explore view | ✅ Done | Interactive map with shop pins and a detail sheet. |
+| Shop detail | ⚠️ Partial | "Show more" jumps to booking instead of expanding; rating/reviews not shown on the detail screen. |
+| Booking (date, time, services, vehicle) | ⚠️ Partial | Captures plate + notes only; vehicle model is not editable. Calendar month arrows are inert. |
+| Pay with tokens | ⚠️ Partial | No balance check — a booking can be confirmed with insufficient tokens (balance floors at 0). |
+| Confirmation + stamp increment | ✅ Done | Adds one stamp, caps at 5, unlocks voucher at 5. |
+| Rewards / journey card | ✅ Done | 5-stamp progress, voucher unlock. |
+| Vouchers list | ✅ Done | "Use now / Use voucher" routes Home; no redemption flow (out of scope). |
+| Bookings history | ⚠️ Partial | Stores a single booking; a new booking overwrites the previous one. |
+| Chat | ❌ Missing | Nav item exists in top/bottom nav but is a no-op. |
+
+## Known Gaps & Issues
+
+**Flow**
+
+- **No token-balance guard at checkout** — `confirmBooking` deducts with
+  `Math.max(0, tokens - total)`, so an unaffordable booking still confirms and the
+  balance silently floors at 0. Should block or warn when `total > tokens`.
+- **"Show more" on the shop detail screen navigates to Booking** instead of
+  expanding details (the map detail card expands correctly; the full-screen detail
+  screen does not).
+- **Top-nav "Join Us"** opens the plans screen via the generic navigation, which
+  does not record the originating screen, so the plans back button falls back to
+  Home rather than returning to the prior page.
+
+**Dead / non-functional buttons**
+
+- **Chat** — present in both bottom nav and top nav, wired to nothing.
+- **Share** and the **Heart / favourite** icon on the shop detail card have no
+  handlers.
+- **Calendar month ◀ / ▶ arrows** on the booking screen do nothing (the calendar
+  is fixed to May 2026).
+- **Filter** icon (Home search) and the **filter chips** (Explore) are decorative —
+  no filtering logic is attached.
+
+**Missing information / data**
+
+- **Vehicle model** is shown on the desktop Home dashboard but cannot be entered or
+  edited during booking (only plate + notes are captured).
+- **Bookings** is a single object, not a list — there is no booking history.
+- **Open / Closed** state is hardcoded by index on the desktop Home cards rather
+  than driven by shop data (no `open` field exists in the catalog).
+- **Rating / reviews / wait time** exist in the catalog but are only surfaced in the
+  expanded map detail card, not on the shop detail screen.
+
+**Internationalisation**
+
+- Hardcoded English `aria-label`s ("Back", "Share") in `DetailScreen`,
+  `ShopDetailCard`, and `ExploreScreen` should use the `back` / a `share` copy key.
+- Unused copy keys remain in `data/copy.js` (e.g. `planSubtitle`, `plateValue`,
+  `nearby`).
 
 ## Prototype Scope
 

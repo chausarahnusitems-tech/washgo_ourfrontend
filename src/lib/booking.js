@@ -5,7 +5,10 @@ export const initialState = {
   screen: "home",
   prevScreen: null,
   selectedPlan: "premium",
-  tokens: 0,
+  // Seed the premium plan's balance so the marketplace is usable from the Home
+  // landing. (Plan selection is now optional via Account → Upgrade Plan, so we
+  // can no longer rely on that flow to grant the starting tokens.)
+  tokens: 100,
   stamps: 4,
   voucher: false,
   booking: null,
