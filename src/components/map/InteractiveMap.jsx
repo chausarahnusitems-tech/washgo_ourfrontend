@@ -1,41 +1,45 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import L from "leaflet";
+import maplibregl from "maplibre-gl";
 import { icons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 
-// Default car-wash pin (uses the brand SVG marker from assets).
-const carIcon = L.icon({
-  iconUrl: icons.mapCarPin,
-  iconSize: [40, 40],
-  iconAnchor: [20, 36],
-  className: "wg-marker"
-});
+// Clean, minimalist basemap (vector). OpenFreeMap is free, keyless and
+// community-hosted; "positron" is its light, low-saturation Waze/Grab-style theme.
+const STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
 
-// Highlighted variant for the currently selected shop — slightly larger.
-const carIconActive = L.icon({
-  iconUrl: icons.mapCarPin,
-  iconSize: [54, 54],
-  iconAnchor: [27, 48],
-  className: "wg-marker wg-marker--active"
-});
+// MapLibre uses [lng, lat] order (the opposite of Leaflet's [lat, lng]).
+const DEFAULT_CENTER = [106.7305, 10.7995];
 
-// Blue "you are here" puck.
-const userIcon = L.divIcon({
-  className: "",
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-  html:
-    '<span style="display:block;width:18px;height:18px;border-radius:9999px;' +
+// Build the DOM element for a car-wash pin marker. MapLibre markers are plain
+// HTML elements; the "active" variant (selected shop) is rendered larger.
+function createPinElement(active) {
+  const size = active ? 54 : 40;
+  const el = document.createElement("img");
+  el.src = icons.mapCarPin;
+  el.width = size;
+  el.height = size;
+  el.alt = "";
+  el.draggable = false;
+  el.className = active ? "wg-marker wg-marker--active" : "wg-marker";
+  el.style.cursor = "pointer";
+  el.style.display = "block";
+  return el;
+}
+
+// Build the blue "you are here" puck element.
+function createUserElement() {
+  const el = document.createElement("span");
+  el.style.cssText =
+    "display:block;width:18px;height:18px;border-radius:9999px;" +
     "background:#2f7df6;border:3px solid #fff;" +
-    'box-shadow:0 0 0 6px rgba(47,125,246,0.25),0 1px 4px rgba(0,0,0,0.3)"></span>'
-});
-
-const DEFAULT_CENTER = [10.7995, 106.7305];
+    "box-shadow:0 0 0 6px rgba(47,125,246,0.25),0 1px 4px rgba(0,0,0,0.3)";
+  return el;
+}
 
 /**
- * Interactive, pannable/zoomable Leaflet map with a marker per car wash and a
+ * Interactive, pannable/zoomable MapLibre map with a marker per car wash and a
  * "you are here" puck. Clicking a marker calls `onSelectShop(shop.id)`.
  */
 export function InteractiveMap({
@@ -57,35 +61,35 @@ export function InteractiveMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;
 
-    const map = L.map(containerRef.current, {
-      center: userLocation ? [userLocation.lat, userLocation.lng] : DEFAULT_CENTER,
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: STYLE_URL,
+      center: userLocation ? [userLocation.lng, userLocation.lat] : DEFAULT_CENTER,
       zoom: 14,
-      zoomControl: false,
-      attributionControl: false,
+      attributionControl: interactive ? { compact: true } : false,
       // Preview maps (home page) are static, click-through snapshots.
-      dragging: interactive,
-      touchZoom: interactive,
-      scrollWheelZoom: interactive,
-      doubleClickZoom: interactive,
-      boxZoom: interactive,
-      keyboard: interactive
+      interactive
     });
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19
-    }).addTo(map);
-    if (interactive) L.control.zoom({ position: "bottomright" }).addTo(map);
+    if (interactive) {
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: false, showZoom: true }),
+        "bottom-right"
+      );
+    }
 
     if (userLocation) {
-      L.marker([userLocation.lat, userLocation.lng], { icon: userIcon, zIndexOffset: -100 }).addTo(map);
+      new maplibregl.Marker({ element: createUserElement(), anchor: "center" })
+        .setLngLat([userLocation.lng, userLocation.lat])
+        .addTo(map);
     }
 
     mapRef.current = map;
     // Containers that mount during a layout/transition can mis-measure; nudge.
-    const raf = window.requestAnimationFrame(() => map.invalidateSize());
+    const raf = window.requestAnimationFrame(() => map.resize());
 
     const observer = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(() => map.invalidateSize())
+      ? new ResizeObserver(() => map.resize())
       : null;
     if (observer) observer.observe(containerRef.current);
 
@@ -99,7 +103,7 @@ export function InteractiveMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (Re)build shop markers when the visible set changes.
+  // (Re)build shop markers when the visible set (or selection) changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -109,11 +113,14 @@ export function InteractiveMap({
 
     shops.forEach((shop) => {
       if (shop.lat == null || shop.lng == null) return;
-      const marker = L.marker([shop.lat, shop.lng], {
-        icon: shop.id === selectedId ? carIconActive : carIcon,
-        riseOnHover: true
-      }).addTo(map);
-      marker.on("click", () => selectRef.current?.(shop.id));
+      const el = createPinElement(shop.id === selectedId);
+      el.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectRef.current?.(shop.id);
+      });
+      const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+        .setLngLat([shop.lng, shop.lat])
+        .addTo(map);
       markersRef.current[shop.id] = marker;
     });
   }, [shops, selectedId]);
@@ -124,7 +131,10 @@ export function InteractiveMap({
     if (!map || !selectedId) return;
     const shop = shops.find((item) => item.id === selectedId);
     if (shop?.lat != null) {
-      map.setView([shop.lat, shop.lng], Math.max(map.getZoom(), 15), { animate: true });
+      map.flyTo({
+        center: [shop.lng, shop.lat],
+        zoom: Math.max(map.getZoom(), 15)
+      });
     }
   }, [selectedId, shops]);
 
