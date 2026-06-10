@@ -1,32 +1,21 @@
-import heroImage from "../assets/images/car-wash-hero.png";
-import profileImage from "../assets/images/profile-face.png";
-import carImage from "../assets/images/car-icon.png";
-import carwashIcon from "./assets/icons/carwash.svg";
-import detailingIcon from "./assets/icons/detailing.svg";
-import evChargingIcon from "./assets/icons/ev-charging.svg";
-import farFromHomeIcon from "./assets/icons/far-from-home.svg";
-import interiorCleaningIcon from "./assets/icons/interior-cleaning.svg";
-import mapCarPinIcon from "./assets/icons/map-car-pin.svg";
-import miniMapBaseIcon from "./assets/icons/minmapbase.svg";
-import moreIcon from "./assets/icons/more.svg";
-import premiumCareForCarIcon from "./assets/icons/premium-care-for-car.svg";
-import washgoLogo from "./assets/icons/washgologo.svg";
+// Static assets live in `public/` and are referenced by absolute URL path.
+// (Migrated from Vite bundler imports — Next serves `public/` at the web root.)
 
 export const images = {
-  hero: heroImage,
-  profile: profileImage,
-  car: carImage
+  hero: "/images/car-wash-hero.png",
+  profile: "/images/profile-face.png",
+  car: "/images/car-icon.png"
 };
 
 export const icons = {
-  carwash: carwashIcon,
-  detailing: detailingIcon,
-  evCharging: evChargingIcon,
-  farFromHome: farFromHomeIcon,
-  interiorCleaning: interiorCleaningIcon,
-  mapCarPin: mapCarPinIcon,
-  miniMapBase: miniMapBaseIcon,
-  more: moreIcon,
-  premiumCareForCar: premiumCareForCarIcon,
-  washgoLogo
+  carwash: "/icons/carwash.svg",
+  detailing: "/icons/detailing.svg",
+  evCharging: "/icons/ev-charging.svg",
+  farFromHome: "/icons/far-from-home.svg",
+  interiorCleaning: "/icons/interior-cleaning.svg",
+  mapCarPin: "/icons/map-car-pin.svg",
+  miniMapBase: "/icons/minmapbase.svg",
+  more: "/icons/more.svg",
+  premiumCareForCar: "/icons/premium-care-for-car.svg",
+  washgoLogo: "/icons/washgologo.svg"
 };

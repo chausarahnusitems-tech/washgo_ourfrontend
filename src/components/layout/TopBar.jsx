@@ -1,8 +1,14 @@
+"use client";
+
+import Link from "next/link";
 import { Icon } from "../ui/Icon.jsx";
 import { IconButton } from "../ui/Button.jsx";
 import { icons } from "../../assets.js";
+import { useApp } from "../../lib/AppContext.jsx";
 
-export function TopBar({ compact = false, title, subtitle, t, lang, onLang, onBack, onHome }) {
+export function TopBar({ compact = false, title, subtitle, onBack }) {
+  const { t, lang, setLang } = useApp();
+
   return (
     <header className="mb-4 flex min-h-12 items-start justify-between gap-3">
       <div className="flex min-w-0 items-center gap-3">
@@ -11,14 +17,13 @@ export function TopBar({ compact = false, title, subtitle, t, lang, onLang, onBa
             <Icon name="ArrowLeft" className="h-5 w-5" />
           </IconButton>
         ) : (
-          <button
-            type="button"
-            onClick={onHome}
+          <Link
+            href="/"
             aria-label="Washgo home"
             className="inline-flex min-h-11 shrink-0 items-center border-0 bg-transparent p-0"
           >
             <img src={icons.washgoLogo} alt="Washgo" className="h-[31px] w-[79px] object-contain" />
-          </button>
+          </Link>
         )}
 
         {title ? (
@@ -42,7 +47,7 @@ export function TopBar({ compact = false, title, subtitle, t, lang, onLang, onBa
               key={code}
               type="button"
               data-lang={code}
-              onClick={() => onLang(code)}
+              onClick={() => setLang(code)}
               className={`min-w-8 rounded-full px-2 text-[0.68rem] font-black ${
                 lang === code ? "bg-ink text-white" : "text-neutral-500"
               }`}

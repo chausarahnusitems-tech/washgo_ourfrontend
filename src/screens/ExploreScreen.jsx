@@ -1,9 +1,13 @@
+"use client";
+
 import { shops as allShops, userLocation } from "../data/catalog.js";
 import { getVisibleShops } from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
+import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { Icon } from "../components/ui/Icon.jsx";
 import { IconButton } from "../components/ui/Button.jsx";
-import { InteractiveMap } from "../components/map/InteractiveMap.jsx";
+import { InteractiveMap } from "../components/map/InteractiveMapDynamic.jsx";
 import { ShopCard } from "../components/ShopCard.jsx";
 import { ShopDetailCard } from "../components/ShopDetailCard.jsx";
 
@@ -46,8 +50,25 @@ export function FilterChips({ t }) {
   );
 }
 
-export function ExploreScreen(props) {
+export function ExploreScreen() {
   const isDesktop = useIsDesktop();
+  const { t, state } = useApp();
+  const { router, searchParams, setParams } = useUrlNav();
+
+  const props = {
+    state: {
+      ...state,
+      search: searchParams.get("q") ?? "",
+      mapShop: searchParams.get("shop") ?? null
+    },
+    t,
+    onHome: () => router.push("/"),
+    onSearch: (value) => setParams({ q: value }),
+    onSelectMapShop: (id) => setParams({ shop: id }),
+    onCloseMapShop: () => setParams({ shop: null }),
+    onBook: (id) => router.push(`/shops/${id}/book`)
+  };
+
   return isDesktop ? <ExploreDesktop {...props} /> : <ExploreMobile {...props} />;
 }
 

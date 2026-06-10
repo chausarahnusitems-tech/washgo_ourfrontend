@@ -1,9 +1,19 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { getCurrentShop } from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { RewardsCard } from "../components/RewardsCard.jsx";
 import { BookingCard } from "./shared/BookingCard.jsx";
 
-export function ConfirmationScreen({ state, shop, t, onRewards, onHome }) {
+export function ConfirmationScreen() {
+  const router = useRouter();
+  const { t, state } = useApp();
+  const shop = getCurrentShop(state.booking?.shopId);
+  const onRewards = () => router.push("/rewards");
+  const onHome = () => router.push("/");
   return (
     <section className="h-full overflow-y-auto bg-white px-4 py-7 text-center lg:bg-mist">
       <div className="mx-auto w-full max-w-xl">

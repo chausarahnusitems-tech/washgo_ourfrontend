@@ -1,4 +1,8 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
+import { useApp } from "../lib/AppContext.jsx";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -6,8 +10,21 @@ import { Icon } from "../components/ui/Icon.jsx";
 import { RewardsCard } from "../components/RewardsCard.jsx";
 import { VoucherAccess } from "./shared/VoucherAccess.jsx";
 
-export function AccountScreen(props) {
+export function AccountScreen() {
   const isDesktop = useIsDesktop();
+  const router = useRouter();
+  const { t, state, setLang, resetDemo } = useApp();
+
+  const props = {
+    state,
+    t,
+    onLang: setLang,
+    onHome: () => router.push("/"),
+    onPlans: () => router.push("/plans"),
+    onVouchers: () => router.push("/vouchers"),
+    onReset: resetDemo
+  };
+
   return isDesktop ? <AccountDesktop {...props} /> : <AccountMobile {...props} />;
 }
 

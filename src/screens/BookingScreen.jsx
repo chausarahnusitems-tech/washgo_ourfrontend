@@ -1,13 +1,33 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { calendarDays, services, times } from "../data/catalog.js";
-import { getDiscount, getSelectedDateLabel, getSelectedServices, getSubtotal, getTotal } from "../lib/booking.js";
+import {
+  getCurrentShop,
+  getDiscount,
+  getSelectedDateLabel,
+  getSelectedServices,
+  getSubtotal,
+  getTotal
+} from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export function BookingScreen({ state, shop, t, onLang, onBack, onDate, onTime, onService, onVehicle, onConfirm }) {
+export function BookingScreen({ shopId }) {
+  const router = useRouter();
+  const { t, state, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
+  const shop = getCurrentShop(shopId);
+
+  const onBack = () => router.push(`/shops/${shop.id}`);
+  const onConfirm = () => {
+    if (confirmBooking(shop.id)) router.push("/confirmation");
+  };
+
   const selectedServices = getSelectedServices(state.selectedServices);
   const subtotal = getSubtotal(state.selectedServices);
   const discount = getDiscount(state.selectedPlan, state.selectedServices);
@@ -17,15 +37,7 @@ export function BookingScreen({ state, shop, t, onLang, onBack, onDate, onTime, 
     <>
       <section className="h-full overflow-y-auto overflow-x-hidden bg-white px-3.5 pb-5 pt-7 lg:bg-mist">
         <div className="mx-auto w-full max-w-2xl">
-        <TopBar
-          compact
-          title={t("bookNow")}
-          subtitle={shop.name}
-          t={t}
-          lang={state.lang}
-          onLang={onLang}
-          onBack={onBack}
-        />
+        <TopBar compact title={t("bookNow")} subtitle={shop.name} onBack={onBack} />
 
         <section className="rounded-xl border border-black/20 bg-white p-3">
           <h2 className="font-display text-base font-black">{t("selectDate")}</h2>

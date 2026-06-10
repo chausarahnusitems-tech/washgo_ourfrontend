@@ -1,5 +1,5 @@
 import { shops, userLocation } from "../../data/catalog.js";
-import { InteractiveMap } from "./InteractiveMap.jsx";
+import { InteractiveMap } from "./InteractiveMapDynamic.jsx";
 
 // MiniMapCard / MapPreview render a static (non-interactive) snapshot of the
 // real map with the car-wash pins. They are click-through, so call sites can
