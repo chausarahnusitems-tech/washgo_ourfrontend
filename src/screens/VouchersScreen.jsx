@@ -1,3 +1,7 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useApp } from "../lib/AppContext.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -28,13 +32,16 @@ function currentVouchers(voucher, t) {
   return vouchers;
 }
 
-export function VouchersScreen({ state, t, onLang, onHome }) {
+export function VouchersScreen() {
+  const router = useRouter();
+  const { t, state } = useApp();
+  const onHome = () => router.push("/");
   const vouchers = currentVouchers(state.voucher, t);
 
   return (
     <section className="h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
       <div className="mx-auto grid w-full max-w-2xl content-start gap-4">
-      <TopBar compact title={t("currentVouchers")} subtitle={`${vouchers.length} ${t("voucherCount")}`} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
+      <TopBar compact title={t("currentVouchers")} subtitle={`${vouchers.length} ${t("voucherCount")}`} />
       <div className="grid gap-3 sm:grid-cols-2">
         {vouchers.map((voucher) => (
           <article

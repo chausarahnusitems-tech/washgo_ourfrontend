@@ -1,5 +1,6 @@
-import washProgressCarIcon from "../assets/icons/wash-progress-car.svg";
 import { Button } from "./ui/Button.jsx";
+
+const washProgressCarIcon = "/icons/wash-progress-car.svg";
 
 export function RewardsCard({ stamps, voucher, t, onUse }) {
   const totalStamps = 5;

@@ -1,6 +1,10 @@
+"use client";
+
 import { images } from "../assets.js";
 import { services } from "../data/catalog.js";
-import { getVisibleShops } from "../lib/booking.js";
+import { getCurrentShop, getVisibleShops } from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
+import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { Icon } from "../components/ui/Icon.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
@@ -25,8 +29,23 @@ function ServiceChips({ shop, t }) {
   );
 }
 
-export function DetailScreen(props) {
+export function DetailScreen({ shopId }) {
   const isDesktop = useIsDesktop();
+  const { t, state } = useApp();
+  const { router, searchParams, setParams } = useUrlNav();
+  const shop = getCurrentShop(shopId);
+
+  const props = {
+    shop,
+    state: { ...state, search: searchParams.get("q") ?? "" },
+    t,
+    onBack: () => router.back(),
+    onBooking: () => router.push(`/shops/${shop.id}/book`),
+    onQuickView: (id) => setParams({ quick: id }, { replace: false }),
+    onShop: (id) => router.push(`/shops/${id}`),
+    onSearch: (value) => setParams({ q: value })
+  };
+
   return isDesktop ? <DetailDesktop {...props} /> : <DetailMobile {...props} />;
 }
 

@@ -1,5 +1,10 @@
+"use client";
+
 import { icons, images } from "../assets.js";
-import { getVisibleShops } from "../lib/booking.js";
+import { services as serviceCatalog } from "../data/catalog.js";
+import { DEFAULT_SHOP_ID, getVisibleShops } from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
+import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { Icon } from "../components/ui/Icon.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -16,8 +21,28 @@ const homeServiceTiles = [
   { id: "moreServices", icon: icons.more }
 ];
 
-export function HomeScreen(props) {
+export function HomeScreen() {
   const isDesktop = useIsDesktop();
+  const { t, state, setLang } = useApp();
+  const { router, searchParams, setParams } = useUrlNav();
+
+  const props = {
+    state: { ...state, search: searchParams.get("q") ?? "" },
+    t,
+    onLang: setLang,
+    onHome: () => router.push("/"),
+    onSearch: (value) => setParams({ q: value }),
+    onShop: (id) => router.push(`/shops/${id}`),
+    onQuickView: (id) => setParams({ quick: id }, { replace: false }),
+    onExplore: () => router.push("/explore"),
+    onService: (serviceId) => {
+      const seed = serviceCatalog.some((service) => service.id === serviceId) ? serviceId : "";
+      router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
+    },
+    onBook: () => router.push(`/shops/${DEFAULT_SHOP_ID}/book`),
+    onBookings: () => router.push("/bookings")
+  };
+
   return isDesktop ? <HomeDesktop {...props} /> : <HomeMobile {...props} />;
 }
 

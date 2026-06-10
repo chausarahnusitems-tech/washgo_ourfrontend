@@ -1,9 +1,9 @@
 import { dates, plans, services, shops } from "../data/catalog.js";
 
+// Navigation state (screen, selectedShop, mapShop, quickShop, search, prevScreen)
+// now lives in the URL — only domain/session state remains here.
 export const initialState = {
   lang: "en",
-  screen: "home",
-  prevScreen: null,
   selectedPlan: "premium",
   // Seed the premium plan's balance so the marketplace is usable from the Home
   // landing. (Plan selection is now optional via Account → Upgrade Plan, so we
@@ -12,19 +12,19 @@ export const initialState = {
   stamps: 4,
   voucher: false,
   booking: null,
-  selectedShop: "sparkle",
   selectedServices: ["exterior", "interior"],
   selectedDate: "today",
   selectedTime: "12.00PM",
-  search: "",
-  quickShop: null,
-  mapShop: null,
   vehicle: {
     model: "BMW 1234",
     plate: "51G-248.19",
     notes: ""
   }
 };
+
+// The default shop used when a booking action isn't anchored to a specific
+// shop route (e.g. the desktop dashboard "Book Wash" quick action).
+export const DEFAULT_SHOP_ID = "sparkle";
 
 export function getCurrentPlan(selectedPlan) {
   return plans.find((plan) => plan.id === selectedPlan) ?? plans[1];

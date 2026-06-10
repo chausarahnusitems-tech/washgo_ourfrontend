@@ -1,8 +1,19 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import { plans } from "../data/catalog.js";
+import { useApp } from "../lib/AppContext.jsx";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 
-export function PlansScreen({ state, t, onLang, onBack, onSelectPlan, onContinue }) {
+export function PlansScreen() {
+  const router = useRouter();
+  const { t, state, setLang: onLang, setSelectedPlan: onSelectPlan, continuePlan } = useApp();
+  const onBack = () => router.back();
+  const onContinue = () => {
+    continuePlan();
+    router.push("/account");
+  };
   return (
     <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white lg:bg-mist">
       <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-7">
