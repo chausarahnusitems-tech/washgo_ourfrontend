@@ -1,4 +1,4 @@
-import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 import { AppProvider } from "../lib/AppContext.jsx";
 import { AppShell } from "../components/layout/AppShell.jsx";
