@@ -13,13 +13,13 @@ export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = fa
     <header className="mb-4 flex min-h-12 items-start justify-between gap-3">
       <div className="flex min-w-0 items-center gap-3">
         {onBack ? (
-          <IconButton label="Back" onClick={onBack}>
+          <IconButton label={t("back")} onClick={onBack}>
             <Icon name="ArrowLeft" className="h-5 w-5" />
           </IconButton>
         ) : hideLogo ? null : (
           <Link
             href="/"
-            aria-label="Washgo home"
+            aria-label={t("homeAria")}
             className="inline-flex min-h-11 shrink-0 items-center border-0 bg-transparent p-0"
           >
             <img src={icons.washgoLogo} alt="Washgo" className="h-[31px] w-[79px] object-contain" />
@@ -40,7 +40,7 @@ export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = fa
             <span className="block text-neutral-500">{t("memberUntil")}</span>
             <strong className="block text-ink">{t("dateUntil")}</strong>
           </div>
-          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label="Language">
+          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label={t("language")}>
             {["en", "vi"].map((code) => (
               <button
                 key={code}

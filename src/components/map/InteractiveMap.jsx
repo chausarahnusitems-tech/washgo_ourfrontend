@@ -58,6 +58,12 @@ export function InteractiveMap({
   const markersRef = useRef({});
   const selectRef = useRef(onSelectShop);
   selectRef.current = onSelectShop;
+  // Mirror the latest props in refs so the marker-build / flyTo effects can read
+  // them without listing `shops` as a dependency (it's a fresh array each render).
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  const shopsRef = useRef(shops);
+  shopsRef.current = shops;
 
   // Init the map once.
   useEffect(() => {
@@ -105,17 +111,25 @@ export function InteractiveMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (Re)build shop markers when the visible set (or selection) changes.
+  // Diff shop markers when the visible set changes: reuse existing markers, add
+  // only new shops, remove only departed ones. Avoids tearing down every pin on
+  // each search keystroke (which caused visible flicker).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    Object.values(markersRef.current).forEach((marker) => marker.remove());
-    markersRef.current = {};
-
+    const nextIds = new Set();
     shops.forEach((shop) => {
       if (shop.lat == null || shop.lng == null) return;
-      const el = createPinElement(shop.id === selectedId);
+      nextIds.add(shop.id);
+
+      const existing = markersRef.current[shop.id];
+      if (existing) {
+        existing.setLngLat([shop.lng, shop.lat]);
+        return;
+      }
+
+      const el = createPinElement(shop.id === selectedIdRef.current);
       el.addEventListener("click", (event) => {
         event.stopPropagation();
         selectRef.current?.(shop.id);
@@ -125,20 +139,41 @@ export function InteractiveMap({
         .addTo(map);
       markersRef.current[shop.id] = marker;
     });
-  }, [shops, selectedId]);
 
-  // Pan/zoom to the selected shop.
+    Object.keys(markersRef.current).forEach((id) => {
+      if (!nextIds.has(id)) {
+        markersRef.current[id].remove();
+        delete markersRef.current[id];
+      }
+    });
+  }, [shops]);
+
+  // Resize the active pin in place when the selection changes — no marker churn.
+  useEffect(() => {
+    Object.entries(markersRef.current).forEach(([id, marker]) => {
+      const el = marker.getElement();
+      if (!el) return;
+      const active = id === selectedId;
+      const size = active ? 54 : 40;
+      el.width = size;
+      el.height = size;
+      el.className = active ? "wg-marker wg-marker--active" : "wg-marker";
+    });
+  }, [selectedId]);
+
+  // Pan/zoom to the selected shop (reads shops via ref so panning + typing don't
+  // re-center an already-selected pin).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedId) return;
-    const shop = shops.find((item) => item.id === selectedId);
+    const shop = shopsRef.current.find((item) => item.id === selectedId);
     if (shop?.lat != null) {
       map.flyTo({
         center: [shop.lng, shop.lat],
         zoom: Math.max(map.getZoom(), 15)
       });
     }
-  }, [selectedId, shops]);
+  }, [selectedId]);
 
   return (
     <div

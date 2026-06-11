@@ -1,42 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { getVouchers } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 
-function currentVouchers(voucher, t) {
-  const vouchers = [
-    {
-      id: "detailing10",
-      title: t("discountVoucherTitle"),
-      copy: t("discountVoucherCopy"),
-      code: "DETAIL10",
-      expires: "20 Jul 2026",
-      tone: "red"
-    }
-  ];
-
-  if (voucher) {
-    vouchers.unshift({
-      id: "freewash",
-      title: t("voucherTitle"),
-      copy: t("voucherCopy"),
-      code: "WASHGO-FREE-01",
-      expires: "31 Aug 2026",
-      tone: "green"
-    });
-  }
-
-  return vouchers;
-}
-
 export function VouchersScreen() {
   const router = useRouter();
-  const { t, state } = useApp();
-  const onHome = () => router.push("/");
-  const vouchers = currentVouchers(state.voucher, t);
+  const { t, state, redeemVoucher } = useApp();
+  const vouchers = getVouchers(state.voucher, t);
+  // Redeeming the free-wash voucher arms it for the next booking; either way we
+  // send the user to browse a shop where the voucher gets applied/used.
+  const onUse = (voucher) => {
+    if (voucher.id === "freewash") redeemVoucher();
+    router.push("/explore");
+  };
 
   return (
     <section className="h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
@@ -63,7 +43,7 @@ export function VouchersScreen() {
               <span className="flex justify-between gap-3">{t("code")}: <strong>{voucher.code}</strong></span>
               <span className="flex justify-between gap-3">{t("expires")}: <strong>{voucher.expires}</strong></span>
             </div>
-            <Button onClick={onHome} variant="onColor" className="justify-self-start">
+            <Button onClick={() => onUse(voucher)} variant="onColor" className="justify-self-start">
               {t("useNow")}
             </Button>
           </article>

@@ -1,7 +1,10 @@
+"use client";
+
 import { useState } from "react";
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
 import { formatVnd } from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
 import { Icon } from "./ui/Icon.jsx";
 import { Button, IconButton } from "./ui/Button.jsx";
 import { cx } from "../lib/cx.js";
@@ -31,10 +34,34 @@ function ServiceChips({ shop, t }) {
  * returns to the list, `onClose` (desktop) dismisses the card.
  */
 export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "desktop", className }) {
+  const { state, toggleFavorite } = useApp();
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   if (!shop) return null;
 
   const isMobile = variant === "mobile";
+  const isFav = (state.favorites ?? []).includes(shop.id);
+
+  // Share via the Web Share API where available, falling back to copying the
+  // link to the clipboard (with a brief "Link copied" confirmation). No backend.
+  const onShare = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: shop.name, text: shop.address, url });
+        return;
+      }
+    } catch {
+      return; // user dismissed the share sheet
+    }
+    try {
+      await navigator.clipboard?.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  };
 
   return (
     <article
@@ -48,11 +75,16 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
         <div className="flex items-start justify-between gap-3">
           <h1 className="min-w-0 font-display text-2xl font-black leading-tight">{shop.name}</h1>
           <div className="flex shrink-0 gap-2">
-            <IconButton label="Share" className="h-9 w-9 bg-neutral-100">
+            <IconButton label={t("share")} onClick={onShare} className="h-9 w-9 bg-neutral-100">
               <Icon name="Share2" className="h-5 w-5" />
             </IconButton>
-            <IconButton label={t("quickView")} className="h-9 w-9 bg-neutral-100">
-              <Icon name="Heart" className="h-5 w-5" />
+            <IconButton
+              label={isFav ? t("saved") : t("save")}
+              aria-pressed={isFav}
+              onClick={() => toggleFavorite(shop.id)}
+              className="h-9 w-9 bg-neutral-100"
+            >
+              <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />
             </IconButton>
             <IconButton
               label={t("close")}
@@ -64,12 +96,25 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           </div>
         </div>
 
+        {/* aria-live so the clipboard fallback is announced to screen readers */}
+        <p aria-live="polite" className={cx("text-xs font-bold text-wash-500", !copied && "sr-only")}>
+          {copied ? t("linkCopied") : ""}
+        </p>
+
         <p className="mt-1 text-sm text-neutral-600">
-          {t("hours")} <span className="text-neutral-400">·</span> {shop.distance}
+          <span
+            className={cx(
+              "mr-1 rounded px-1 text-[0.62rem] font-black text-white",
+              shop.open ? "bg-emerald-500" : "bg-neutral-400"
+            )}
+          >
+            {shop.open ? t("open") : t("closed")}
+          </span>
+          {shop.hours ?? t("hours")} <span className="text-neutral-400">·</span> {shop.distance}
         </p>
         <p className="mt-1 flex items-start gap-2 text-sm text-neutral-600">
           <Icon name="MapPin" className="mt-0.5 h-4 w-4 shrink-0" />
-          {shop.address}
+          {shop.district ? `${shop.district} · ${shop.address}` : shop.address}
         </p>
 
         <img
@@ -96,7 +141,7 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
               </dd>
             </div>
             <div className="rounded-xl bg-neutral-100 px-3 py-2">
-              <dt className="text-[0.7rem] text-neutral-500">{t("hours")}</dt>
+              <dt className="text-[0.7rem] text-neutral-500">{t("waitTime")}</dt>
               <dd className="flex items-center gap-1 font-bold text-wash-500">
                 <Icon name="Clock" className="h-3.5 w-3.5" />
                 {shop.wait}

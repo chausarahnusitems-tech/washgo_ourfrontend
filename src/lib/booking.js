@@ -1,4 +1,5 @@
 import { dates, plans, services, shops } from "../data/catalog.js";
+import { formatIsoLabel } from "./calendar.js";
 
 // Navigation state (screen, selectedShop, mapShop, quickShop, search, prevScreen)
 // now lives in the URL — only domain/session state remains here.
@@ -7,11 +8,18 @@ export const initialState = {
   // Membership tier. Unlocks perks + a checkout discount; it no longer funds the
   // wallet (the cash wallet is topped up separately).
   selectedPlan: "premium",
-  // Cash wallet balance in VND. Seeded so the marketplace is usable from the
-  // Home landing; the user tops this up via Account → Top Up Funds.
-  funds: 500000,
+  // Cash wallet balance in VND. This is the *spendable* balance: the two seeded
+  // upcoming bookings below (90.000 + 144.000 = 234.000) are treated as already
+  // paid from a 500.000 top-up, leaving 266.000 — so cancelling them refunds
+  // back toward 500.000 without minting money the user never spent.
+  funds: 266000,
   stamps: 4,
   voucher: false,
+  // Set true when the user taps "Use voucher": the next confirmed booking is
+  // free (and resets the loyalty card). See confirmBooking / redeemVoucher.
+  pendingVoucher: false,
+  // Shop ids the user has favourited (Heart toggle). Persisted via localStorage.
+  favorites: [],
   // The most recently confirmed booking (used by the confirmation screen) plus
   // the full history of booked slots shown on the Bookings page. Each booking
   // carries a `status` (upcoming | completed | cancelled); upcoming ones are
@@ -23,10 +31,11 @@ export const initialState = {
       shopId: "sparkle",
       shop: "Sparkle Auto Wash",
       dateId: "today",
-      date: "Today 26 May",
+      date: "Today 11 Jun",
       time: "12.00PM",
       services: ["exterior", "interior"],
       total: 90000,
+      plan: "premium",
       status: "upcoming"
     },
     {
@@ -34,10 +43,11 @@ export const initialState = {
       shopId: "lotus",
       shop: "Lotus Detail Studio",
       dateId: "sat",
-      date: "Sat 28 May",
+      date: "Sat 13 Jun",
       time: "2.00PM",
       services: ["detailing", "wax"],
       total: 144000,
+      plan: "premium",
       status: "upcoming"
     },
     {
@@ -45,10 +55,11 @@ export const initialState = {
       shopId: "saigon",
       shop: "Saigon Shine Hub",
       dateId: null,
-      date: "Wed 7 May",
+      date: "Wed 3 Jun",
       time: "10.00AM",
       services: ["exterior"],
       total: 45000,
+      plan: "premium",
       status: "completed"
     },
     {
@@ -56,10 +67,11 @@ export const initialState = {
       shopId: "sparkle",
       shop: "Sparkle Auto Wash",
       dateId: null,
-      date: "Mon 5 May",
+      date: "Mon 1 Jun",
       time: "4.00PM",
       services: ["detailing"],
       total: 90000,
+      plan: "premium",
       status: "cancelled"
     }
   ],
@@ -83,6 +95,12 @@ export function getCurrentPlan(selectedPlan) {
 
 export function getCurrentShop(selectedShop) {
   return shops.find((shop) => shop.id === selectedShop) ?? shops[0];
+}
+
+// Strict lookup that returns null for an unknown id (unlike getCurrentShop,
+// which falls back to shops[0]). Used to detect typo'd / stale deep links.
+export function getShopById(id) {
+  return shops.find((shop) => shop.id === id) ?? null;
 }
 
 export function getSelectedServices(selectedServiceIds) {
@@ -112,19 +130,26 @@ export function formatVnd(amount) {
 }
 
 export function getSelectedDateLabel(selectedDate, t) {
-  const date = dates.find((item) => item.id === selectedDate) ?? dates[0];
-  return `${t(date.label)} ${date.number} ${date.sub}`;
+  // Legacy quick-pick ids (today/tomorrow/sat/sun) keep their translated label.
+  const legacy = dates.find((item) => item.id === selectedDate);
+  if (legacy) return `${t(legacy.label)} ${legacy.number} ${legacy.sub}`;
+  // Dynamic-calendar ids are ISO dates (e.g. "2026-06-20").
+  const isoLabel = formatIsoLabel(selectedDate);
+  if (isoLabel) return isoLabel;
+  const fallback = dates[0];
+  return `${t(fallback.label)} ${fallback.number} ${fallback.sub}`;
 }
 
-export function getVisibleShops(search) {
-  const needle = search.trim().toLowerCase();
-  if (!needle) return shops;
+export function getVisibleShops(search, serviceId = null) {
+  const needle = (search ?? "").trim().toLowerCase();
 
-  return shops.filter((shop) =>
-    `${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`
+  return shops.filter((shop) => {
+    if (serviceId && !shop.services.includes(serviceId)) return false;
+    if (!needle) return true;
+    return `${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`
       .toLowerCase()
-      .includes(needle)
-  );
+      .includes(needle);
+  });
 }
 
 export function toggleItem(items, item) {
@@ -147,4 +172,34 @@ export function getHistoryBookings(bookings) {
 
 export function getBookingById(bookings, id) {
   return (bookings ?? []).find((booking) => booking.id === id) ?? null;
+}
+
+// The user's available vouchers. The 10%-off detailing voucher is always
+// present; the free-wash voucher appears once the loyalty card is full
+// (`voucher`). Centralised so the list and every "N vouchers" count stay in
+// sync (callers used to hardcode `voucher ? 2 : 1`).
+export function getVouchers(voucher, t) {
+  const vouchers = [
+    {
+      id: "detailing10",
+      title: t("discountVoucherTitle"),
+      copy: t("discountVoucherCopy"),
+      code: "DETAIL10",
+      expires: "20 Jul 2026",
+      tone: "red"
+    }
+  ];
+
+  if (voucher) {
+    vouchers.unshift({
+      id: "freewash",
+      title: t("voucherTitle"),
+      copy: t("voucherCopy"),
+      code: "WASHGO-FREE-01",
+      expires: "31 Aug 2026",
+      tone: "green"
+    });
+  }
+
+  return vouchers;
 }

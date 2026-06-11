@@ -9,7 +9,7 @@ import { QuickShopModal } from "../QuickShopModal.jsx";
 // Routes that show the mobile bottom nav (mirrors the old `bottomNavByScreen`
 // map). Detail / booking / confirmation / explore / plans render their own
 // footer or are desktop-only, so they show no bottom nav.
-const BOTTOM_NAV_ROUTES = new Set(["/", "/bookings", "/rewards", "/vouchers", "/account"]);
+const BOTTOM_NAV_ROUTES = new Set(["/", "/bookings", "/chat", "/rewards", "/vouchers", "/account"]);
 
 export function AppShell({ children }) {
   const pathname = usePathname();

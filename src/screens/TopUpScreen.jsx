@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
+import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
@@ -19,7 +20,7 @@ export function TopUpScreen() {
   const [amount, setAmount] = useState(100000);
   const [custom, setCustom] = useState("");
 
-  const onBack = () => router.back();
+  const onBack = useBackOr("/account");
 
   const onCustom = (value) => {
     const digits = value.replace(/[^\d]/g, "");

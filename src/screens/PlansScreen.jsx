@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { plans } from "../data/catalog.js";
 import { useApp } from "../lib/AppContext.jsx";
+import { useBackOr } from "../lib/useBackOr.js";
 import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 
 export function PlansScreen() {
   const router = useRouter();
   const { t, state, setLang: onLang, setSelectedPlan: onSelectPlan } = useApp();
-  const onBack = () => router.back();
+  const onBack = useBackOr("/account");
   // Membership selection only updates the active tier; the cash wallet is topped
   // up separately, so confirming a plan just returns to the account page.
   const onContinue = () => router.push("/account");
@@ -23,8 +24,9 @@ export function PlansScreen() {
           </IconButton>
           <div className="min-w-0">
             <h1 className="m-0 font-display text-[1.35rem] font-black leading-none text-ink">{t("choosePlan")}</h1>
+            <p className="mt-1 truncate text-xs text-neutral-500">{t("planSubtitle")}</p>
           </div>
-          <div className="inline-flex h-9 shrink-0 rounded-full bg-neutral-100 p-1" role="group" aria-label="Language">
+          <div className="inline-flex h-9 shrink-0 rounded-full bg-neutral-100 p-1" role="group" aria-label={t("language")}>
             {["en", "vi"].map((code) => (
               <button
                 key={code}
@@ -44,7 +46,10 @@ export function PlansScreen() {
           <IconButton label={t("back")} variant="secondary" onClick={onBack}>
             <Icon name="ArrowLeft" className="h-5 w-5" />
           </IconButton>
-          <h1 className="font-display text-2xl font-black">{t("choosePlan")}</h1>
+          <div>
+            <h1 className="font-display text-2xl font-black">{t("choosePlan")}</h1>
+            <p className="mt-1 text-sm text-neutral-500">{t("planSubtitle")}</p>
+          </div>
         </div>
         <div className="mt-7 grid gap-5">
           {plans.map((plan) => {
