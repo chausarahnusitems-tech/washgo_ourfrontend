@@ -32,7 +32,7 @@ export function HomeScreen() {
     onLang: setLang,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
-    onShop: (id) => router.push(`/shops/${id}`),
+    onShop: (id) => router.push(`/explore?shop=${id}`),
     onQuickView: (id) => setParams({ quick: id }, { replace: false }),
     onExplore: () => router.push("/explore"),
     onService: (serviceId) => {

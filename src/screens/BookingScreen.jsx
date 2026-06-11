@@ -23,7 +23,7 @@ export function BookingScreen({ shopId }) {
   const { t, state, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
   const shop = getCurrentShop(shopId);
 
-  const onBack = () => router.push(`/shops/${shop.id}`);
+  const onBack = () => router.back();
   const onConfirm = () => {
     if (confirmBooking(shop.id)) router.push("/confirmation");
   };

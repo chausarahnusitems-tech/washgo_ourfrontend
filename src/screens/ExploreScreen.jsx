@@ -10,6 +10,7 @@ import { IconButton } from "../components/ui/Button.jsx";
 import { InteractiveMap } from "../components/map/InteractiveMapDynamic.jsx";
 import { ShopCard } from "../components/ShopCard.jsx";
 import { ShopDetailCard } from "../components/ShopDetailCard.jsx";
+import { BottomSheet } from "../components/ui/BottomSheet.jsx";
 
 const filterChips = ["exteriorWash", "interiorWash", "detail"];
 
@@ -159,21 +160,24 @@ function ExploreMobile({ state, t, onHome, onSearch, onSelectMapShop, onCloseMap
       </IconButton>
 
       {selectedShop ? (
-        <div className="absolute inset-x-0 bottom-0 z-[1000] h-[64%]">
-          <ShopDetailCard
-            shop={selectedShop}
-            t={t}
-            variant="mobile"
-            className="shadow-device"
-            onBack={onCloseMapShop}
-            onBook={onBook}
-          />
-        </div>
+        <BottomSheet snapPoints={[0.9, 0.5, 0.2]} initialSnapIndex={1}>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ShopDetailCard
+              shop={selectedShop}
+              t={t}
+              variant="mobile"
+              onBack={onCloseMapShop}
+              onBook={onBook}
+            />
+          </div>
+        </BottomSheet>
       ) : (
-        <div className="absolute inset-x-0 bottom-0 z-[1000] flex h-[60%] flex-col rounded-t-[22px] bg-white shadow-device">
-          <div className="mx-auto mt-3 h-1.5 w-11 shrink-0 rounded-full bg-neutral-200" />
-          <div className="grid shrink-0 gap-3 px-4 pb-3 pt-2">
-            <h2 className="font-display text-lg font-black">{t("nearbyCarWashes")}</h2>
+        <BottomSheet
+          snapPoints={[0.9, 0.5, 0.2]}
+          initialSnapIndex={1}
+          handle={<h2 className="px-4 pb-1 pt-2 font-display text-lg font-black">{t("nearbyCarWashes")}</h2>}
+        >
+          <div className="grid shrink-0 gap-3 px-4 pb-3 pt-1">
             <SearchBar value={state.search} onChange={onSearch} t={t} />
             <FilterChips t={t} />
           </div>
@@ -186,7 +190,7 @@ function ExploreMobile({ state, t, onHome, onSearch, onSelectMapShop, onCloseMap
               <div className="rounded-[18px] border border-black/10 bg-white p-7 text-center text-sm text-neutral-500">{t("noResults")}</div>
             )}
           </div>
-        </div>
+        </BottomSheet>
       )}
     </section>
   );
