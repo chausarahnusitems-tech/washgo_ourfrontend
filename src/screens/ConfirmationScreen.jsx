@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { getCurrentShop } from "../lib/booking.js";
+import { formatVnd, getCurrentShop } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
-import { Button } from "../components/ui/Button.jsx";
+import { Button, IconButton } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { RewardsCard } from "../components/RewardsCard.jsx";
 import { BookingCard } from "./shared/BookingCard.jsx";
@@ -12,26 +12,44 @@ export function ConfirmationScreen() {
   const router = useRouter();
   const { t, state } = useApp();
   const shop = getCurrentShop(state.booking?.shopId);
-  const onRewards = () => router.push("/rewards");
+  const onBookings = () => router.push("/bookings");
   const onHome = () => router.push("/");
+
   return (
-    <section className="h-full overflow-y-auto bg-white px-4 py-7 text-center lg:bg-mist">
-      <div className="mx-auto w-full max-w-xl">
-      <div className="mx-auto mt-5 grid h-16 w-16 place-items-center rounded-full bg-wash-500 text-white">
-        <Icon name="Check" className="h-8 w-8" />
-      </div>
-      <h1 className="mt-5 font-display text-2xl font-black">{t("confirmedTitle")}</h1>
-      <p className="mx-5 mt-2 text-sm text-neutral-600">{t("confirmedCopy")}</p>
-
-      <div className="mt-5 grid gap-4 text-left">
-        {state.booking ? <BookingCard booking={state.booking} shop={shop} t={t} /> : null}
-        <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
+    <section className="relative h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
+      {/* Cross button to close the confirmation and return home */}
+      <div className="mx-auto flex w-full max-w-xl justify-end">
+        <IconButton label={t("close")} onClick={onHome} className="bg-neutral-100">
+          <Icon name="X" className="h-5 w-5" />
+        </IconButton>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <Button variant="secondary" onClick={onRewards}>{t("viewRewards")}</Button>
-        <Button onClick={onHome}>{t("bookAnother")}</Button>
-      </div>
+      <div className="mx-auto w-full max-w-xl text-center">
+        <div className="mx-auto mt-2 grid h-16 w-16 place-items-center rounded-full bg-wash-500 text-white">
+          <Icon name="Check" className="h-8 w-8" />
+        </div>
+        <h1 className="mt-5 font-display text-2xl font-black">{t("confirmedTitle")}</h1>
+        <p className="mx-5 mt-2 text-sm text-neutral-600">{t("confirmedCopy")}</p>
+
+        {state.booking ? (
+          <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-wash-50 px-4 py-1.5 text-sm font-black text-wash-600">
+            <Icon name="Wallet" className="h-4 w-4" />
+            {t("total")}: {formatVnd(state.booking.total)}
+          </p>
+        ) : null}
+
+        <div className="mt-5 grid gap-4 text-left">
+          {state.booking ? <BookingCard booking={state.booking} shop={shop} t={t} /> : null}
+          <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          <Button onClick={onBookings} className="min-h-[52px] w-full rounded-2xl">
+            <Icon name="Calendar" className="h-5 w-5" />
+            {t("viewMyBookings")}
+          </Button>
+          <Button variant="secondary" onClick={onHome}>{t("bookAnother")}</Button>
+        </div>
       </div>
     </section>
   );

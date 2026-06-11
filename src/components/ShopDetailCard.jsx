@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
+import { formatVnd } from "../lib/booking.js";
 import { Icon } from "./ui/Icon.jsx";
 import { Button, IconButton } from "./ui/Button.jsx";
 import { cx } from "../lib/cx.js";
@@ -117,7 +118,7 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
       <div className="flex items-center justify-between gap-4 border-t border-black/10 px-5 py-4">
         <div>
           <strong className="block text-2xl font-black leading-none">
-            {shop.starting} {t("tokens")}
+            {formatVnd(shop.starting)}
           </strong>
           <span className="text-xs text-neutral-500">{t("startingAt")}</span>
         </div>

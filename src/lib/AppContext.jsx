@@ -10,7 +10,9 @@ import {
   toggleItem
 } from "./booking.js";
 
-const STORAGE_KEY = "washgo:app-state";
+// Bump the version suffix when the persisted shape changes so returning users
+// pick up the new defaults/seed data instead of stale state.
+const STORAGE_KEY = "washgo:app-state-v2";
 
 const AppContext = createContext(null);
 
@@ -62,12 +64,11 @@ export function AppProvider({ children }) {
     setState((prev) => ({ ...prev, selectedPlan }));
   }, []);
 
-  // Grant the plan's token balance (membership purchase).
-  const continuePlan = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      tokens: prev.selectedPlan === "premium" ? 100 : 50
-    }));
+  // Add cash to the wallet (fake local top-up; the backend will replace this).
+  const topUpFunds = useCallback((amount) => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return;
+    setState((prev) => ({ ...prev, funds: prev.funds + Math.round(value) }));
   }, []);
 
   const setVehicle = useCallback((patch) => {
@@ -102,24 +103,103 @@ export function AppProvider({ children }) {
       const shop = getCurrentShop(shopId);
       const nextStamps = Math.min(5, prev.stamps + 1);
 
+      const booking = {
+        id: `bk-${prev.bookings.length + 1}-${Date.now()}`,
+        shopId: shop.id,
+        shop: shop.name,
+        dateId: prev.selectedDate,
+        date: getSelectedDateLabel(
+          prev.selectedDate,
+          (key) => copy[prev.lang][key] ?? copy.en[key] ?? key
+        ),
+        time: prev.selectedTime,
+        services: [...prev.selectedServices],
+        total,
+        status: "upcoming"
+      };
+
       return {
         ...prev,
-        tokens: Math.max(0, prev.tokens - total),
+        funds: Math.max(0, prev.funds - total),
         stamps: nextStamps,
         voucher: nextStamps >= 5,
-        booking: {
-          shopId: shop.id,
-          shop: shop.name,
-          date: getSelectedDateLabel(
-            prev.selectedDate,
-            (key) => copy[prev.lang][key] ?? copy.en[key] ?? key
-          ),
-          time: prev.selectedTime,
-          total
-        }
+        booking,
+        bookings: [booking, ...prev.bookings]
       };
     });
     return ok;
+  }, []);
+
+  // Edit an upcoming booking's date / time / services. Recomputes the total and
+  // adjusts the wallet by the difference (refund if cheaper, charge if pricier).
+  const updateBooking = useCallback((id, patch) => {
+    setState((prev) => {
+      const index = prev.bookings.findIndex((item) => item.id === id);
+      if (index === -1) return prev;
+
+      const existing = prev.bookings[index];
+      const services = patch.services ?? existing.services;
+      const dateId = patch.dateId ?? existing.dateId;
+      const time = patch.time ?? existing.time;
+      const newTotal = getTotal(prev.selectedPlan, services);
+      const date = dateId
+        ? getSelectedDateLabel(dateId, (key) => copy[prev.lang][key] ?? copy.en[key] ?? key)
+        : existing.date;
+
+      const updated = { ...existing, services: [...services], dateId, time, date, total: newTotal };
+      const delta = existing.total - newTotal; // positive => refund, negative => charge
+
+      const bookings = [...prev.bookings];
+      bookings[index] = updated;
+
+      return {
+        ...prev,
+        funds: Math.max(0, prev.funds + delta),
+        bookings,
+        booking: prev.booking?.id === id ? updated : prev.booking
+      };
+    });
+  }, []);
+
+  // Cancel an upcoming booking: mark it cancelled (moves to History) and refund
+  // the total back to the wallet.
+  const cancelBooking = useCallback((id) => {
+    setState((prev) => {
+      const index = prev.bookings.findIndex((item) => item.id === id);
+      if (index === -1) return prev;
+
+      const existing = prev.bookings[index];
+      if ((existing.status ?? "upcoming") !== "upcoming") return prev;
+
+      const updated = { ...existing, status: "cancelled" };
+      const bookings = [...prev.bookings];
+      bookings[index] = updated;
+
+      return {
+        ...prev,
+        funds: prev.funds + existing.total,
+        bookings,
+        booking: prev.booking?.id === id ? updated : prev.booking
+      };
+    });
+  }, []);
+
+  // Remove a booking entirely. Refund only if it was still an active (upcoming)
+  // reservation — completed/cancelled rows were already settled.
+  const deleteBooking = useCallback((id) => {
+    setState((prev) => {
+      const existing = prev.bookings.find((item) => item.id === id);
+      if (!existing) return prev;
+
+      const refund = (existing.status ?? "upcoming") === "upcoming" ? existing.total : 0;
+
+      return {
+        ...prev,
+        funds: prev.funds + refund,
+        bookings: prev.bookings.filter((item) => item.id !== id),
+        booking: prev.booking?.id === id ? null : prev.booking
+      };
+    });
   }, []);
 
   const resetDemo = useCallback(() => {
@@ -133,15 +213,18 @@ export function AppProvider({ children }) {
       t,
       setLang,
       setSelectedPlan,
-      continuePlan,
+      topUpFunds,
       setVehicle,
       toggleService,
       setDate,
       setTime,
       confirmBooking,
+      updateBooking,
+      cancelBooking,
+      deleteBooking,
       resetDemo
     }),
-    [state, t, setLang, setSelectedPlan, continuePlan, setVehicle, toggleService, setDate, setTime, confirmBooking, resetDemo]
+    [state, t, setLang, setSelectedPlan, topUpFunds, setVehicle, toggleService, setDate, setTime, confirmBooking, updateBooking, cancelBooking, deleteBooking, resetDemo]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

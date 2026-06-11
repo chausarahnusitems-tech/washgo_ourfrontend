@@ -1,5 +1,6 @@
 import { images } from "../assets.js";
 import { cx } from "../lib/cx.js";
+import { formatVnd } from "../lib/booking.js";
 import { Icon } from "./ui/Icon.jsx";
 import { IconButton } from "./ui/Button.jsx";
 
@@ -50,7 +51,7 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
             {shop.wait}
           </span>
           <strong className="text-ink">
-            {shop.starting} {t("tokenShort")}
+            {t("from")} {formatVnd(shop.starting)}
           </strong>
         </div>
       </div>

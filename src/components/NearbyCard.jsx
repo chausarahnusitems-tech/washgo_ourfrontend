@@ -1,5 +1,6 @@
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
+import { formatVnd } from "../lib/booking.js";
 import { Icon } from "./ui/Icon.jsx";
 
 export function NearbyCard({ shop, t, onSelect, closed = false }) {
@@ -34,7 +35,7 @@ export function NearbyCard({ shop, t, onSelect, closed = false }) {
         <p className="truncate text-[0.7rem] text-neutral-500">{shop.address}</p>
         <div className="mt-auto flex items-center justify-between gap-2 pt-2">
           <span className="text-xs font-black text-ink">
-            {t("from")} {shop.starting} {t("credits")}
+            {t("from")} {formatVnd(shop.starting)}
           </span>
           <span className="flex items-center gap-1 text-neutral-400">
             {shopServices.slice(0, 3).map((service) => (

@@ -6,7 +6,7 @@ import { IconButton } from "../ui/Button.jsx";
 import { icons } from "../../assets.js";
 import { useApp } from "../../lib/AppContext.jsx";
 
-export function TopBar({ compact = false, title, subtitle, onBack }) {
+export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = false }) {
   const { t, lang, setLang } = useApp();
 
   return (
@@ -16,7 +16,7 @@ export function TopBar({ compact = false, title, subtitle, onBack }) {
           <IconButton label="Back" onClick={onBack}>
             <Icon name="ArrowLeft" className="h-5 w-5" />
           </IconButton>
-        ) : (
+        ) : hideLogo ? null : (
           <Link
             href="/"
             aria-label="Washgo home"

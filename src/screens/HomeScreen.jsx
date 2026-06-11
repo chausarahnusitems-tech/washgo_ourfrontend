@@ -2,7 +2,7 @@
 
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
-import { DEFAULT_SHOP_ID, getVisibleShops } from "../lib/booking.js";
+import { DEFAULT_SHOP_ID, formatVnd, getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -40,7 +40,8 @@ export function HomeScreen() {
       router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
     },
     onBook: () => router.push(`/shops/${DEFAULT_SHOP_ID}/book`),
-    onBookings: () => router.push("/bookings")
+    onBookings: () => router.push("/bookings"),
+    onTopUp: () => router.push("/topup")
   };
 
   return isDesktop ? <HomeDesktop {...props} /> : <HomeMobile {...props} />;
@@ -49,25 +50,14 @@ export function HomeScreen() {
 /* ------------------------------------------------------------------ */
 /* Mobile (original single-column marketplace)                         */
 /* ------------------------------------------------------------------ */
-function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService }) {
+function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService, onTopUp }) {
   const visibleShops = getVisibleShops(state.search);
 
   return (
     <section className="h-full overflow-y-auto px-3.5 pb-5 pt-7">
       <TopBar t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
 
-      <section className="relative aspect-[345/226] overflow-hidden rounded-[20px] bg-[linear-gradient(301deg,#ff0000_0%,#760000_22.6%,#ff0000_48.6%,#9c0000_88.5%)]">
-        <img
-          src={icons.premiumCareForCar}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-y-0 right-0 h-full w-[85.5%] object-fill"
-        />
-        <div className="absolute left-[9.3%] top-[13.7%] w-[48%] text-white">
-          <h1 className="font-display text-2xl font-black leading-tight">{t("heroTitle")}</h1>
-          <p className="mt-3 text-sm leading-snug text-white/90">{t("heroCopy")}</p>
-        </div>
-      </section>
+      <PremiumCareCard t={t} aspectClass="aspect-[345/226]" imageWidthClass="w-[85.5%]" />
 
       <label className="mt-5 grid min-h-12 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
         <Icon name="Search" className="h-5 w-5" />
@@ -83,10 +73,16 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
 
       <div className="mt-5 flex items-center justify-between">
         <h2 className="font-display text-base font-black">{t("recommended")}</h2>
-        <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-wash-50 px-3 text-xs font-black text-wash-600">
-          <Icon name="Coins" className="h-4 w-4" />
-          {state.tokens} {t("tokenShort")}
-        </span>
+        <button
+          type="button"
+          onClick={onTopUp}
+          aria-label={t("topUpFunds")}
+          className="inline-flex min-h-8 items-center gap-1 rounded-full bg-wash-50 px-3 text-xs font-black text-wash-600"
+        >
+          <Icon name="Wallet" className="h-4 w-4" />
+          {formatVnd(state.funds)}
+          <Icon name="Plus" className="h-3.5 w-3.5" />
+        </button>
       </div>
       <button
         type="button"
@@ -214,18 +210,7 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBooking
         {/* Right column */}
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-2 gap-6">
-            <section className="relative aspect-[2/1] overflow-hidden rounded-[20px] bg-[linear-gradient(301deg,#ff0000_0%,#760000_22.6%,#ff0000_48.6%,#9c0000_88.5%)]">
-              <img
-                src={icons.premiumCareForCar}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-y-0 right-0 h-full w-[80%] object-fill"
-              />
-              <div className="absolute left-[7%] top-[14%] w-[52%] text-white">
-                <h1 className="font-display text-3xl font-black leading-tight">{t("heroTitle")}</h1>
-                <p className="mt-3 text-sm leading-snug text-white/90">{t("heroCopy")}</p>
-              </div>
-            </section>
+            <PremiumCareCard t={t} aspectClass="aspect-[2/1]" imageWidthClass="w-[80%]" />
 
             <section className="relative aspect-[2/1] overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_85%_20%,rgba(255,255,255,0.28),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-6 text-white">
               <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
@@ -278,6 +263,29 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBooking
             </div>
           </section>
         </div>
+      </div>
+    </section>
+  );
+}
+
+/* Shared "Premium Care for Your Car" hero card.
+   Text is sized in container query units (cqw) — a percentage of the card's own
+   width — so the title/body stay at the exact same scale relative to the card on
+   every screen size. Only the aspect ratio and image width differ per layout. */
+function PremiumCareCard({ t, aspectClass, imageWidthClass }) {
+  return (
+    <section
+      className={`relative ${aspectClass} overflow-hidden rounded-[20px] bg-[linear-gradient(301deg,#ff0000_0%,#760000_22.6%,#ff0000_48.6%,#9c0000_88.5%)] [container-type:inline-size]`}
+    >
+      <img
+        src={icons.premiumCareForCar}
+        alt=""
+        aria-hidden="true"
+        className={`absolute inset-y-0 right-0 h-full ${imageWidthClass} object-cover object-right`}
+      />
+      <div className="absolute left-[7%] top-[14%] w-[50%] text-white">
+        <h1 className="font-display text-[6.5cqw] font-black leading-tight">{t("heroTitle")}</h1>
+        <p className="mt-[2.5cqw] text-[3cqw] leading-snug text-white/90">{t("heroCopy")}</p>
       </div>
     </section>
   );

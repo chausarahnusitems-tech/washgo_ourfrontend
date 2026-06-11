@@ -63,7 +63,7 @@ export function VouchersScreen() {
               <span className="flex justify-between gap-3">{t("code")}: <strong>{voucher.code}</strong></span>
               <span className="flex justify-between gap-3">{t("expires")}: <strong>{voucher.expires}</strong></span>
             </div>
-            <Button onClick={onHome} className="justify-self-start bg-white text-wash-500 shadow-none hover:bg-white">
+            <Button onClick={onHome} variant="onColor" className="justify-self-start">
               {t("useNow")}
             </Button>
           </article>
