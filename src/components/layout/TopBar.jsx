@@ -34,29 +34,29 @@ export function TopBar({ compact = false, title, subtitle, onBack }) {
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {!compact ? (
+      {!compact ? (
+        <div className="flex shrink-0 items-center gap-2">
           <div className="text-right text-[0.68rem] leading-tight">
             <span className="block text-neutral-500">{t("memberUntil")}</span>
             <strong className="block text-ink">{t("dateUntil")}</strong>
           </div>
-        ) : null}
-        <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label="Language">
-          {["en", "vi"].map((code) => (
-            <button
-              key={code}
-              type="button"
-              data-lang={code}
-              onClick={() => setLang(code)}
-              className={`min-w-8 rounded-full px-2 text-[0.68rem] font-black ${
-                lang === code ? "bg-ink text-white" : "text-neutral-500"
-              }`}
-            >
-              {code.toUpperCase()}
-            </button>
-          ))}
+          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label="Language">
+            {["en", "vi"].map((code) => (
+              <button
+                key={code}
+                type="button"
+                data-lang={code}
+                onClick={() => setLang(code)}
+                className={`min-w-8 rounded-full px-2 text-[0.68rem] font-black ${
+                  lang === code ? "bg-ink text-white" : "text-neutral-500"
+                }`}
+              >
+                {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </header>
   );
 }

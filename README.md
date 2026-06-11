@@ -105,12 +105,12 @@ production build.
 - **Open / Closed** state is hardcoded by index on the desktop Home cards rather
   than driven by shop data (no `open` field exists in the catalog).
 - **Rating / reviews / wait time** exist in the catalog but are only surfaced in the
-  expanded map detail card, not on the shop detail screen.
+  expanded map detail card (`ShopDetailCard` on Explore).
 
 **Internationalisation**
 
-- Hardcoded English `aria-label`s ("Back", "Share") in `DetailScreen`,
-  `ShopDetailCard`, and `ExploreScreen` should use the `back` / a `share` copy key.
+- Hardcoded English `aria-label`s ("Back", "Share") in `ShopDetailCard` and
+  `ExploreScreen` should use the `back` / a `share` copy key.
 - Unused copy keys remain in `data/copy.js` (e.g. `planSubtitle`, `plateValue`,
   `nearby`).
 
