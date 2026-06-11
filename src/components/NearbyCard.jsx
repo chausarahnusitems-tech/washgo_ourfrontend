@@ -1,8 +1,10 @@
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
+import { formatVnd } from "../lib/booking.js";
 import { Icon } from "./ui/Icon.jsx";
 
-export function NearbyCard({ shop, t, onSelect, closed = false }) {
+export function NearbyCard({ shop, t, onSelect }) {
+  const closed = !shop.open;
   const shopServices = shop.services
     .map((id) => serviceCatalog.find((service) => service.id === id))
     .filter(Boolean);
@@ -14,7 +16,7 @@ export function NearbyCard({ shop, t, onSelect, closed = false }) {
       className="group flex h-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-lg"
     >
       <div className="relative h-32 w-full overflow-hidden bg-neutral-100">
-        <img src={images.hero} alt={`${shop.name} wash bay`} className={`h-full w-full object-cover ${shop.imagePosition}`} />
+        <img src={images.hero} alt={`${shop.name} ${t("washBayAlt")}`} className={`h-full w-full object-cover ${shop.imagePosition}`} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
         <h3 className="truncate font-display text-base font-black leading-tight text-ink">{shop.name}</h3>
@@ -29,12 +31,12 @@ export function NearbyCard({ shop, t, onSelect, closed = false }) {
           >
             {closed ? t("closed") : t("open")}
           </span>
-          <span>· {t("hours")}</span>
+          <span>· {shop.hours ?? t("hours")}</span>
         </p>
         <p className="truncate text-[0.7rem] text-neutral-500">{shop.address}</p>
         <div className="mt-auto flex items-center justify-between gap-2 pt-2">
           <span className="text-xs font-black text-ink">
-            {t("from")} {shop.starting} {t("credits")}
+            {t("from")} {formatVnd(shop.starting)}
           </span>
           <span className="flex items-center gap-1 text-neutral-400">
             {shopServices.slice(0, 3).map((service) => (

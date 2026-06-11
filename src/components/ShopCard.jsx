@@ -1,9 +1,16 @@
+"use client";
+
 import { images } from "../assets.js";
 import { cx } from "../lib/cx.js";
+import { formatVnd } from "../lib/booking.js";
+import { useApp } from "../lib/AppContext.jsx";
 import { Icon } from "./ui/Icon.jsx";
 import { IconButton } from "./ui/Button.jsx";
 
 export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
+  const { state, toggleFavorite } = useApp();
+  const isFav = (state.favorites ?? []).includes(shop.id);
+
   return (
     <article
       className={cx(
@@ -16,10 +23,12 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
         onClick={() => onSelect(shop.id)}
         className="relative h-[84px] overflow-hidden rounded-xl bg-neutral-100"
       >
-        <img src={images.hero} alt={`${shop.name} wash bay`} className={`h-full w-full object-cover ${shop.imagePosition}`} />
-        <span className="absolute -bottom-1 -right-1 rounded-full bg-wash-500 px-2 py-1 text-[0.56rem] font-black text-white">
-          {t("freeWash")}
-        </span>
+        <img src={images.hero} alt={`${shop.name} ${t("washBayAlt")}`} className={`h-full w-full object-cover ${shop.imagePosition}`} />
+        {shop.promo ? (
+          <span className="absolute -bottom-1 -right-1 rounded-full bg-wash-500 px-2 py-1 text-[0.56rem] font-black text-white">
+            {t("freeWash")}
+          </span>
+        ) : null}
       </button>
 
       <div className="min-w-0">
@@ -31,14 +40,33 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
           >
             {shop.name}
           </button>
-          <IconButton label={t("quickView")} onClick={() => onQuickView(shop.id)} className="h-9 w-9">
-            <Icon name="Heart" className="h-5 w-5" />
-          </IconButton>
+          <div className="flex shrink-0 items-center">
+            {onQuickView ? (
+              <IconButton label={t("quickView")} onClick={() => onQuickView(shop.id)} className="h-9 w-9">
+                <Icon name="Eye" className="h-5 w-5" />
+              </IconButton>
+            ) : null}
+            <IconButton
+              label={isFav ? t("saved") : t("save")}
+              aria-pressed={isFav}
+              onClick={() => toggleFavorite(shop.id)}
+              className="h-9 w-9"
+            >
+              <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />
+            </IconButton>
+          </div>
         </div>
         <p className="mt-1 text-xs text-neutral-600">
-          <span className="rounded bg-emerald-500 px-1 text-[0.62rem] font-black text-white">{t("open")}</span>
+          <span
+            className={cx(
+              "rounded px-1 text-[0.62rem] font-black text-white",
+              shop.open ? "bg-emerald-500" : "bg-neutral-400"
+            )}
+          >
+            {shop.open ? t("open") : t("closed")}
+          </span>
           {" · "}
-          {t("hours")} · {shop.distance}
+          {shop.hours ?? t("hours")} · {shop.distance}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.7rem] text-wash-500">
           <span className="inline-flex items-center gap-1">
@@ -50,7 +78,7 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
             {shop.wait}
           </span>
           <strong className="text-ink">
-            {shop.starting} {t("tokenShort")}
+            {t("from")} {formatVnd(shop.starting)}
           </strong>
         </div>
       </div>

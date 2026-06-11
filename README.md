@@ -1,212 +1,119 @@
-# Washgo Prototype Brief
+# Washgo Prototype
 
-Washgo is a web app concept for car owners in Vietnam to discover and book car wash services. The intended prototype is a clickable customer journey that demonstrates how users choose a token plan, browse nearby car wash shops, book a slot, pay with tokens, and earn rewards.
+Washgo is a web app concept for car owners in Vietnam to discover and book car
+wash services. It is a clickable customer-journey prototype: choose a membership
+tier, browse nearby shops, book a slot, pay from a cash wallet, and earn rewards.
 
-This repository includes a static clickable prototype. It does not include a backend, authentication, real payments, maps integration, or live shop availability.
+This repository is a **front-end only** prototype. There is no backend, auth,
+real payments, or live shop availability — all data is mocked and all state is
+held client-side and persisted to `localStorage`. The backend will be added
+afterwards; the code is structured so the local fakes (top-up, booking, chat)
+can be swapped for real APIs.
 
-## Prototype Goal
+The prototype supports both **English and Vietnamese**.
 
-The prototype communicates the end-to-end customer experience for demo and planning purposes. It uses mocked data and focuses on the core booking journey rather than production infrastructure.
+## Cash Wallet (currency)
 
-The prototype supports both English and Vietnamese language options.
+Washgo uses a pure cash system. Each user has a wallet balance in Vietnamese Dong
+(VND, ₫) used to pay for bookings.
+
+- Users top up the wallet at any time (**Account → Top Up Funds**). The top-up
+  page is a local-only fake flow that adjusts the balance directly.
+- Booking a wash deducts the total from the wallet. Checkout is **balance-guarded**
+  — a booking can't be confirmed (or edited to a higher price) without sufficient
+  funds; an "Insufficient balance → Top up" affordance links to the top-up page.
+
+## Membership (optional)
+
+Membership is separate from the wallet — it unlocks perks and a checkout discount,
+it does not add funds.
+
+- **Basic** — member rates at every shop.
+- **Premium** — 10% off every wash + priority slots + free birthday wash.
+
+Each booking records the plan it was priced under, so later edits reprice
+honestly instead of retroactively applying the current plan.
+
+## Rewards
+
+Every confirmed (paid) booking adds one stamp to the journey card. At five stamps
+the user unlocks a **free-wash voucher**. Tapping *Use voucher* arms it, and the
+next booking is applied for free, consuming the voucher and restarting the card.
+Cancelling/deleting a booking reverses the stamp it granted (no free-wash farming).
 
 ## Core User Flows
 
-### 1. User Onboarding
+1. **Onboarding** — the app opens on the **Home** marketplace (wallet seeded so it
+   is usable immediately). Choosing/upgrading a plan is an optional step from
+   **Account → Upgrade Plan**.
+2. **Discovery** — browse shops via cards, free-text search, quick-view, the
+   interactive map, and **service filters** (Explore filter chips).
+3. **Booking** — pick a shop, date (dynamic month calendar), time, and services;
+   enter vehicle model / plate / notes; review the VND total; confirm to charge
+   the wallet and open the Booking Confirmed page.
+4. **Bookings** — upcoming and history lists; open a booking to edit, cancel
+   (refunds), rebook, or delete.
 
-The app opens directly on the **Home** marketplace (seeded with the premium plan's
-100-token balance). Choosing or upgrading a token plan is now an optional step
-reached from **Account → Upgrade Plan**:
+## Implemented Local-Only Features
 
-- Basic: 50 tokens
-- Premium: 100 tokens
+These work fully client-side (no backend):
 
-Tokens are the marketplace currency used to pay for car wash bookings. The
-membership plans screen includes a back button that returns to the screen it was
-opened from.
+- Cash wallet with top-up, balance-guarded checkout, and edit/cancel/delete refunds
+- Free-wash voucher redemption + loyalty-card reset; stamp reversal on cancel/delete
+- Membership plans + premium checkout discount (priced per booking)
+- Marketplace search **and service filtering** (Explore chips, URL-driven)
+- Favourites (Heart toggle, persisted) on shop cards and the detail card
+- Share (Web Share API with clipboard fallback) on the shop detail card
+- Interactive MapLibre map with diffed shop pins + "you are here" puck
+- Dynamic month calendar with working prev/next navigation
+- Vehicle model / plate / notes capture
+- Data-driven open/closed + opening hours per shop
+- Support **chat placeholder** (canned auto-reply, local message list) at `/chat`
+- English / Vietnamese throughout, including aria-labels
 
-### 2. Marketplace Discovery
+## Out of Scope (backend to follow)
 
-Users can browse available car wash shops in their area through:
-
-- Quick view cards
-- Location search
-
-The prototype can use mocked shops and locations instead of real geolocation or map data.
-
-### 3. Booking and Purchasing Slots
-
-Users should be able to:
-
-- Choose a car wash shop
-- Enter the booking date, time, and necessary vehicle details
-- Customize selected services, such as exterior wash or interior cleaning
-- Review the final total cost in tokens
-- Confirm the booking using tokens
-
-### 4. Rewards and Free Car Washes
-
-After a user confirms a booking and pays with tokens:
-
-- The user's journey card gains one stamp
-- Once five stamps are collected, the user receives one free car wash voucher
-- The free voucher can be shown as redeemable at any participating car wash shop
-
-## Implementation Status
-
-Audited against the flows above. Status reflects the clickable prototype, not a
-production build.
-
-| Feature | Status | Notes |
-| --- | --- | --- |
-| Home as landing page | ✅ Done | Opens on Home; tokens seeded to 100. |
-| Membership plans from Account | ✅ Done | `Account → Upgrade Plan`; plans screen has a back button. |
-| English / Vietnamese toggle | ✅ Done | Some `aria-label`s are still hardcoded English (see gaps). |
-| Marketplace browse (cards + search) | ✅ Done | Search filters by name/district/address/services. |
-| Map / explore view | ✅ Done | Interactive map with shop pins and a detail sheet. |
-| Shop detail | ⚠️ Partial | "Show more" jumps to booking instead of expanding; rating/reviews not shown on the detail screen. |
-| Booking (date, time, services, vehicle) | ⚠️ Partial | Captures plate + notes only; vehicle model is not editable. Calendar month arrows are inert. |
-| Pay with tokens | ⚠️ Partial | No balance check — a booking can be confirmed with insufficient tokens (balance floors at 0). |
-| Confirmation + stamp increment | ✅ Done | Adds one stamp, caps at 5, unlocks voucher at 5. |
-| Rewards / journey card | ✅ Done | 5-stamp progress, voucher unlock. |
-| Vouchers list | ✅ Done | "Use now / Use voucher" routes Home; no redemption flow (out of scope). |
-| Bookings history | ⚠️ Partial | Stores a single booking; a new booking overwrites the previous one. |
-| Chat | ❌ Missing | Nav item exists in top/bottom nav but is a no-op. |
-
-## Known Gaps & Issues
-
-**Flow**
-
-- **No token-balance guard at checkout** — `confirmBooking` deducts with
-  `Math.max(0, tokens - total)`, so an unaffordable booking still confirms and the
-  balance silently floors at 0. Should block or warn when `total > tokens`.
-- **"Show more" on the shop detail screen navigates to Booking** instead of
-  expanding details (the map detail card expands correctly; the full-screen detail
-  screen does not).
-- **Top-nav "Join Us"** opens the plans screen via the generic navigation, which
-  does not record the originating screen, so the plans back button falls back to
-  Home rather than returning to the prior page.
-
-**Dead / non-functional buttons**
-
-- **Chat** — present in both bottom nav and top nav, wired to nothing.
-- **Share** and the **Heart / favourite** icon on the shop detail card have no
-  handlers.
-- **Calendar month ◀ / ▶ arrows** on the booking screen do nothing (the calendar
-  is fixed to May 2026).
-- **Filter** icon (Home search) and the **filter chips** (Explore) are decorative —
-  no filtering logic is attached.
-
-**Missing information / data**
-
-- **Vehicle model** is shown on the desktop Home dashboard but cannot be entered or
-  edited during booking (only plate + notes are captured).
-- **Bookings** is a single object, not a list — there is no booking history.
-- **Open / Closed** state is hardcoded by index on the desktop Home cards rather
-  than driven by shop data (no `open` field exists in the catalog).
-- **Rating / reviews / wait time** exist in the catalog but are only surfaced in the
-  expanded map detail card, not on the shop detail screen.
-
-**Internationalisation**
-
-- Hardcoded English `aria-label`s ("Back", "Share") in `DetailScreen`,
-  `ShopDetailCard`, and `ExploreScreen` should use the `back` / a `share` copy key.
-- Unused copy keys remain in `data/copy.js` (e.g. `planSubtitle`, `plateValue`,
-  `nearby`).
-
-## Prototype Scope
-
-In scope:
-
-- Clickable end-to-end customer flow
-- Mocked plan, token, shop, service, slot, stamp, and voucher data
-- English and Vietnamese language support
-- Demo-friendly screens for plan selection, marketplace browsing, booking, checkout, confirmation, and rewards
-
-Out of scope for the first prototype:
-
-- Backend APIs
-- User authentication
-- Real token purchases or payment processing
-- Real-time shop availability
-- Real geolocation or maps integration
-- Merchant dashboards
-- Admin tools
-- Production voucher validation
+Backend APIs, authentication, real payments / top-ups, real-time availability,
+real geolocation, merchant dashboards, admin tools, and production voucher
+validation.
 
 ## Run the Prototype
 
-Install dependencies:
-
 ```bash
 npm install
-```
-
-Start the React dev server:
-
-```bash
 npm run dev
 ```
 
-Then open:
+Then open http://127.0.0.1:3000
 
-```text
-http://localhost:5173
-```
-
-Create a production build:
+Production build:
 
 ```bash
 npm run build
+npm start
 ```
 
 ## Project Structure
 
 ```text
 .
-├── index.html
-├── package.json
+├── next.config.mjs
 ├── tailwind.config.js
-├── vite.config.js
+├── jsconfig.json            # "@/*" -> "./src/*"
+├── public/                  # images, icons, map style (served at the web root)
 ├── src/
-│   ├── App.jsx
-│   ├── main.jsx
-│   ├── styles.css
-│   ├── components/
-│   ├── data/
-│   ├── lib/
-│   └── screens/
-├── assets/
-│   └── images/
-│       ├── car-icon.png
-│       ├── profile-face.png
-│       └── car-wash-hero.png
+│   ├── app/                 # Next.js App Router routes (thin wrappers)
+│   ├── screens/             # Screen components (mobile + desktop variants)
+│   ├── components/          # UI primitives, layout, cards, map
+│   ├── lib/                 # AppContext (state), booking, calendar, hooks
+│   └── data/                # catalog (shops/services/dates) + copy (EN/VI)
 ├── docs/
-│   ├── AGENT.md
-│   ├── StyleGuide.json
-│   └── reference/
-│       └── prisma/
+│   ├── AGENT.md             # original concept
+│   └── StyleGuide.json
 └── README.md
 ```
 
-## Suggested Future Work
-
-Future product and technical work could include:
-
-- Merchant shop and slot management
-- Real geolocation and map search
-- User accounts and authentication
-- Payment integration for token purchases
-- Token ledger and transaction history
-- Voucher redemption and validation flow
-- Backend APIs and database models
-- Admin tools for marketplace operations
-
-## Review Criteria
-
-The prototype brief should:
-
-- Accurately reflect the original Washgo concept in `docs/AGENT.md`
-- Make clear that this is a static prototype, not a completed product
-- Be useful for both demo stakeholders and future developers
-- Keep setup instructions accurate for the static prototype
+State lives in two places: domain/session state (wallet, bookings, stamps,
+favourites, language) in `src/lib/AppContext.jsx` (persisted to `localStorage`),
+and navigation state (search `?q`, map `?shop`, filter `?service`, quick-view
+`?quick`) in the URL.

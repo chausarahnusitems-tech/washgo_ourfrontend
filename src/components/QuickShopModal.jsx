@@ -34,7 +34,8 @@ export function QuickShopModal() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  const select = (id) => router.push(`/shops/${id}`);
+  const select = (id) => router.push(`/explore?shop=${id}`);
+  const book = (id) => router.push(`/shops/${id}/book`);
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/35 p-4 lg:items-center">
@@ -43,7 +44,7 @@ export function QuickShopModal() {
         <ShopCard shop={shop} t={t} onSelect={select} onQuickView={setQuick} />
         <div className="mt-3 grid grid-cols-2 gap-3">
           <Button variant="secondary" onClick={close}>{t("close")}</Button>
-          <Button onClick={() => select(shop.id)}>{t("bookNow")}</Button>
+          <Button onClick={() => book(shop.id)}>{t("bookNow")}</Button>
         </div>
       </div>
     </div>

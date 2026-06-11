@@ -4,7 +4,11 @@ const variants = {
   primary: "bg-wash-500 text-white shadow-cta hover:bg-wash-600",
   secondary: "border border-black/10 bg-white text-ink hover:bg-neutral-50",
   subtle: "bg-neutral-100 text-ink hover:bg-neutral-200",
-  ghost: "bg-transparent text-ink hover:bg-neutral-100"
+  ghost: "bg-transparent text-ink hover:bg-neutral-100",
+  // White pill for use on colored/gradient cards. Kept as its own variant so it
+  // never inherits primary's red bg/white text (which would otherwise win on CSS
+  // source order and make a className override of bg-white silently fail).
+  onColor: "bg-white text-wash-700 hover:bg-white"
 };
 
 export function Button({ children, className, variant = "primary", type = "button", ...props }) {
