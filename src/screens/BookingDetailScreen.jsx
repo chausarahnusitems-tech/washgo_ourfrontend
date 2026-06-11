@@ -28,7 +28,7 @@ const statusTones = {
 
 export function BookingDetailScreen({ bookingId }) {
   const router = useRouter();
-  const { t, state, updateBooking, cancelBooking } = useApp();
+  const { t, state, updateBooking, cancelBooking, deleteBooking } = useApp();
   const booking = getBookingById(state.bookings, bookingId);
 
   const [editing, setEditing] = useState(false);
@@ -60,13 +60,21 @@ export function BookingDetailScreen({ bookingId }) {
     cancelled: t("statusCancelled")
   }[status];
 
+  // Price edits under the plan the booking was made on (not the current plan),
+  // so an unrelated date/time change can't retroactively re-discount it.
+  const pricingPlan = booking.plan ?? state.selectedPlan;
+
   // Totals preview the draft while editing, otherwise reflect the stored booking.
   const viewServices = editing ? draft.services : booking.services;
   const selectedServices = getSelectedServices(viewServices);
   const subtotal = getSubtotal(viewServices);
-  const discount = getDiscount(state.selectedPlan, viewServices);
-  const total = editing ? getTotal(state.selectedPlan, draft.services) : booking.total;
-  const canSave = getTotal(state.selectedPlan, draft.services) > 0;
+  const discount = getDiscount(pricingPlan, viewServices);
+  const draftTotal = getTotal(pricingPlan, draft.services);
+  const total = editing ? draftTotal : booking.total;
+  // A pricier edit must be covered by the wallet (only the extra is charged).
+  const extraCharge = Math.max(0, draftTotal - booking.total);
+  const affordable = extraCharge <= state.funds;
+  const canSave = draftTotal > 0 && affordable;
   const dateLabel = editing ? getSelectedDateLabel(draft.dateId, t) : booking.date;
 
   const startEdit = () => {
@@ -82,12 +90,17 @@ export function BookingDetailScreen({ bookingId }) {
 
   const saveEdit = () => {
     if (!canSave) return;
-    updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
-    setEditing(false);
+    const ok = updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
+    if (ok) setEditing(false);
   };
 
   const onCancelBooking = () => {
     cancelBooking(booking.id);
+    router.push("/bookings");
+  };
+
+  const onDeleteBooking = () => {
+    deleteBooking(booking.id);
     router.push("/bookings");
   };
 
@@ -225,6 +238,9 @@ export function BookingDetailScreen({ bookingId }) {
         <div className="mt-5 grid gap-3">
           {editing ? (
             <>
+              {!affordable ? (
+                <p className="text-center text-xs font-bold text-wash-600">{t("insufficientBalance")}</p>
+              ) : null}
               <Button onClick={saveEdit} disabled={!canSave} className="min-h-[52px] w-full rounded-2xl">
                 <Icon name="Check" className="h-5 w-5" />
                 {t("saveChanges")}
@@ -244,10 +260,16 @@ export function BookingDetailScreen({ bookingId }) {
               <p className="text-center text-xs text-neutral-400">{t("cancelRefundNote")}</p>
             </>
           ) : (
-            <Button onClick={() => router.push(`/shops/${shop.id}/book`)} className="min-h-[52px] w-full rounded-2xl">
-              <Icon name="RotateCcw" className="h-5 w-5" />
-              {t("rebook")}
-            </Button>
+            <>
+              <Button onClick={() => router.push(`/shops/${shop.id}/book`)} className="min-h-[52px] w-full rounded-2xl">
+                <Icon name="RotateCcw" className="h-5 w-5" />
+                {t("rebook")}
+              </Button>
+              <Button variant="secondary" onClick={onDeleteBooking}>
+                <Icon name="Trash2" className="h-5 w-5" />
+                {t("deleteBooking")}
+              </Button>
+            </>
           )}
         </div>
       </div>

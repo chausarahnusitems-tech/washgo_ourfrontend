@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { formatVnd } from "../lib/booking.js";
+import { formatVnd, getVouchers } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { TopBar } from "../components/layout/TopBar.jsx";
@@ -14,7 +14,7 @@ import { VoucherAccess } from "./shared/VoucherAccess.jsx";
 export function AccountScreen() {
   const isDesktop = useIsDesktop();
   const router = useRouter();
-  const { t, state, setLang, resetDemo } = useApp();
+  const { t, state, setLang, resetDemo, redeemVoucher } = useApp();
 
   const props = {
     state,
@@ -23,17 +23,26 @@ export function AccountScreen() {
     onHome: () => router.push("/"),
     onPlans: () => router.push("/plans"),
     onVouchers: () => router.push("/vouchers"),
+    onRewards: () => router.push("/rewards"),
     onTopUp: () => router.push("/topup"),
+    // Mark the free wash to be applied, then send the user to pick a shop.
+    onUseVoucher: () => {
+      redeemVoucher();
+      router.push("/explore");
+    },
     onReset: resetDemo
   };
 
+  // Avoid flashing the mobile layout (full-width red membership card) for a frame
+  // on desktop before the breakpoint resolves.
+  if (isDesktop === null) return null;
   return isDesktop ? <AccountDesktop {...props} /> : <AccountMobile {...props} />;
 }
 
 /* ------------------------------------------------------------------ */
 /* Mobile (original)                                                   */
 /* ------------------------------------------------------------------ */
-function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onTopUp, onReset }) {
+function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onRewards, onTopUp, onUseVoucher, onReset }) {
   return (
     <section className="grid h-full content-start gap-4 overflow-y-auto bg-white px-4 py-7">
       <TopBar compact title={t("account")} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
@@ -47,7 +56,7 @@ function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onTopUp,
       <section className="rounded-[18px] bg-[radial-gradient(circle_at_88%_22%,rgba(255,255,255,0.35),transparent_22%),linear-gradient(135deg,#c40000,#ff1208_68%,#ff7568)] p-6 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-2xl font-black">{state.selectedPlan === "premium" ? t("premium") : t("basic")} Member</h2>
+            <h2 className="font-display text-2xl font-black">{state.selectedPlan === "premium" ? t("premium") : t("basic")} {t("member")}</h2>
             <p className="mt-3 text-sm text-white/90">
               {t("memberUntil")}
               <br />
@@ -76,8 +85,14 @@ function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onTopUp,
           {t("topUp")}
         </Button>
       </section>
-      <VoucherAccess count={state.voucher ? 2 : 1} t={t} onClick={onVouchers} />
-      <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
+      <VoucherAccess count={getVouchers(state.voucher, t).length} t={t} onClick={onVouchers} />
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-base font-black">{t("rewardsTitle")}</h2>
+        <button type="button" onClick={onRewards} className="bg-transparent p-0 text-sm font-black text-wash-500">
+          {t("viewRewards")}
+        </button>
+      </div>
+      <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
       <Button variant="secondary" onClick={onReset}>{t("resetDemo")}</Button>
     </section>
   );
@@ -104,7 +119,7 @@ function RewardTile({ title, expires, tone, t }) {
   );
 }
 
-function AccountDesktop({ state, t, onHome, onPlans, onTopUp, onReset }) {
+function AccountDesktop({ state, t, onPlans, onRewards, onTopUp, onUseVoucher, onReset }) {
   return (
     <section className="h-full overflow-y-auto bg-mist">
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[340px_1fr] gap-6 px-6 py-8 xl:px-10">
@@ -155,10 +170,15 @@ function AccountDesktop({ state, t, onHome, onPlans, onTopUp, onReset }) {
             </div>
           </section>
 
-          <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
+          <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
 
           <section>
-            <h2 className="font-display text-lg font-black">{t("rewards")}</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-lg font-black">{t("rewards")}</h2>
+              <button type="button" onClick={onRewards} className="bg-transparent p-0 text-sm font-black text-wash-500">
+                {t("viewRewards")}
+              </button>
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-5">
               <RewardTile title={t("freeCharging")} tone="green" t={t} />
               <RewardTile title={t("discountDetailing")} tone="red" t={t} />

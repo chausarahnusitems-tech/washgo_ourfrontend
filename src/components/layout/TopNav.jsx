@@ -11,6 +11,7 @@ import { Icon } from "../ui/Icon.jsx";
 function activeKey(pathname) {
   if (pathname === "/explore" || pathname.startsWith("/shops")) return "explore";
   if (pathname === "/bookings") return "bookings";
+  if (pathname === "/chat") return "chat";
   if (pathname === "/account") return "account";
   if (pathname === "/plans") return "joinUs";
   return null;
@@ -24,18 +25,18 @@ export function TopNav({ className }) {
   const links = [
     { key: "explore", label: t("explore"), href: "/explore" },
     { key: "bookings", label: t("bookings"), href: "/bookings" },
-    { key: "chat", label: t("chat"), href: null },
+    { key: "chat", label: t("chat"), href: "/chat" },
     { key: "joinUs", label: t("joinUs"), href: "/plans" }
   ];
 
   return (
     <header className={cx("sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur", className)}>
       <div className="mx-auto flex h-[68px] w-full max-w-[1400px] items-center gap-6 px-6 xl:px-10">
-        <Link href="/" aria-label="Washgo home" className="inline-flex shrink-0 items-center border-0 bg-transparent p-0">
+        <Link href="/" aria-label={t("homeAria")} className="inline-flex shrink-0 items-center border-0 bg-transparent p-0">
           <img src={svgIcons.washgoLogo} alt="Washgo" className="h-8 w-auto object-contain" />
         </Link>
 
-        <nav aria-label="Primary navigation" className="ml-6 flex items-center gap-7">
+        <nav aria-label={t("primaryNav")} className="ml-6 flex items-center gap-7">
           {links.map((link) =>
             link.href ? (
               <Link
@@ -62,7 +63,7 @@ export function TopNav({ className }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-4">
-          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label="Language">
+          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label={t("language")}>
             {["en", "vi"].map((code) => (
               <button
                 key={code}

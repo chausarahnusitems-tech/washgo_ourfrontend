@@ -2,7 +2,7 @@
 
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
-import { DEFAULT_SHOP_ID, formatVnd, getVisibleShops } from "../lib/booking.js";
+import { DEFAULT_SHOP_ID, formatVnd, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -44,6 +44,9 @@ export function HomeScreen() {
     onTopUp: () => router.push("/topup")
   };
 
+  // Render nothing until the breakpoint is known, so the mobile layout never
+  // flashes full-width on desktop (and vice versa).
+  if (isDesktop === null) return null;
   return isDesktop ? <HomeDesktop {...props} /> : <HomeMobile {...props} />;
 }
 
@@ -59,17 +62,26 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
 
       <PremiumCareCard t={t} aspectClass="aspect-[345/226]" imageWidthClass="w-[85.5%]" />
 
-      <label className="mt-5 grid min-h-12 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
-        <Icon name="Search" className="h-5 w-5" />
-        <input
-          type="search"
-          value={state.search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder={t("searchPlaceholder")}
-          className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
-        />
-        <Icon name="Filter" className="h-5 w-5" />
-      </label>
+      <div className="mt-5 flex items-center gap-2">
+        <label className="grid min-h-12 flex-1 grid-cols-[auto_1fr] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
+          <Icon name="Search" className="h-5 w-5" />
+          <input
+            type="search"
+            value={state.search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder={t("searchPlaceholder")}
+            className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={onExplore}
+          aria-label={t("filters")}
+          className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-neutral-100 text-neutral-500"
+        >
+          <Icon name="Filter" className="h-5 w-5" />
+        </button>
+      </div>
 
       <div className="mt-5 flex items-center justify-between">
         <h2 className="font-display text-base font-black">{t("recommended")}</h2>
@@ -142,7 +154,8 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
 /* ------------------------------------------------------------------ */
 function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBookings }) {
   const nearbyShops = getVisibleShops("");
-  const upcoming = state.booking ?? { shop: "MWW 1234", date: "Jul 6, 2026", time: "2:00 PM" };
+  // Surface the user's actual next upcoming booking (seeded list), not a fake.
+  const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
 
   return (
     <section className="h-full overflow-y-auto bg-mist">
@@ -165,22 +178,33 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBooking
           </DashCard>
 
           <DashCard>
-            <CardHeader title={t("upcomingBooking")} onClick={onBookings} />
-            <div className="mt-3 flex items-center gap-3">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-wash-50 text-wash-500">
-                <Icon name="Calendar" className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <strong className="block">
-                  {upcoming.date} <span className="text-neutral-400">·</span> {upcoming.time}
-                </strong>
-                <span className="block truncate text-sm text-neutral-500">{upcoming.shop}</span>
+            <CardHeader title={t("upcomingBooking")} onClick={upcoming ? onBookings : undefined} />
+            {upcoming ? (
+              <>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-wash-50 text-wash-500">
+                    <Icon name="Calendar" className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <strong className="block">
+                      {upcoming.date} <span className="text-neutral-400">·</span> {upcoming.time}
+                    </strong>
+                    <span className="block truncate text-sm text-neutral-500">{upcoming.shop}</span>
+                  </div>
+                </div>
+                <hr className="my-3 border-black/10" />
+                <button type="button" onClick={onBookings} className="bg-transparent p-0 text-sm font-black text-wash-500">
+                  {t("viewDetails")}
+                </button>
+              </>
+            ) : (
+              <div className="mt-3">
+                <p className="text-sm text-neutral-500">{t("noUpcoming")}</p>
+                <button type="button" onClick={onBook} className="mt-3 bg-transparent p-0 text-sm font-black text-wash-500">
+                  {t("bookWash")}
+                </button>
               </div>
-            </div>
-            <hr className="my-3 border-black/10" />
-            <button type="button" onClick={onBookings} className="bg-transparent p-0 text-sm font-black text-wash-500">
-              {t("viewDetails")}
-            </button>
+            )}
           </DashCard>
 
           <DashCard>
@@ -231,8 +255,8 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBooking
               </button>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-4">
-              {nearbyShops.map((shop, index) => (
-                <NearbyCard key={shop.id} shop={shop} t={t} onSelect={onShop} closed={index === 2} />
+              {nearbyShops.map((shop) => (
+                <NearbyCard key={shop.id} shop={shop} t={t} onSelect={onShop} />
               ))}
             </div>
           </section>
@@ -299,15 +323,11 @@ function CardHeader({ title, onClick }) {
   return (
     <div className="flex items-center justify-between">
       <h2 className="font-display text-base font-black">{title}</h2>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={!onClick}
-        className="bg-transparent p-0 text-neutral-400 disabled:opacity-60"
-        aria-hidden={!onClick}
-      >
-        <Icon name="ChevronRight" className="h-5 w-5" />
-      </button>
+      {onClick ? (
+        <button type="button" onClick={onClick} className="bg-transparent p-0 text-neutral-400">
+          <Icon name="ChevronRight" className="h-5 w-5" />
+        </button>
+      ) : null}
     </div>
   );
 }

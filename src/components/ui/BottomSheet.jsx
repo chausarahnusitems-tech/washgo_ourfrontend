@@ -19,6 +19,7 @@ export function BottomSheet({
   snapPoints = DEFAULT_SNAPS,
   initialSnapIndex = 1,
   handle = null,
+  handleLabel = "Resize sheet",
   className = "",
   children
 }) {
@@ -93,6 +94,19 @@ export function BottomSheet({
     setDragOffset(null);
   };
 
+  // Keyboard support for non-pointer users: arrows move between snap points.
+  // snapPoints are ordered largest-first, so index 0 is the most-open state.
+  const onKeyDown = (event) => {
+    let next = snapIndex;
+    if (event.key === "ArrowUp") next = snapIndex - 1;
+    else if (event.key === "ArrowDown") next = snapIndex + 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = snapPoints.length - 1;
+    else return;
+    event.preventDefault();
+    setSnapIndex(clamp(next, 0, snapPoints.length - 1));
+  };
+
   return (
     <div
       ref={sheetRef}
@@ -106,7 +120,14 @@ export function BottomSheet({
       }}
     >
       <div
-        className="shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none select-none rounded-t-[22px] outline-none focus-visible:ring-2 focus-visible:ring-wash-300 active:cursor-grabbing"
+        role="slider"
+        tabIndex={0}
+        aria-label={handleLabel}
+        aria-valuemin={0}
+        aria-valuemax={snapPoints.length - 1}
+        aria-valuenow={snapIndex}
+        onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

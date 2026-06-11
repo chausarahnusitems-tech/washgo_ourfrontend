@@ -1,30 +1,61 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { calendarDays, services, times } from "../data/catalog.js";
+import { services, times } from "../data/catalog.js";
 import {
   formatVnd,
-  getCurrentShop,
   getDiscount,
   getSelectedDateLabel,
   getSelectedServices,
+  getShopById,
   getSubtotal,
   getTotal
 } from "../lib/booking.js";
+import { addMonths, buildMonthGrid, formatMonthLabel, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
 import { useApp } from "../lib/AppContext.jsx";
+import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 
-const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 export function BookingScreen({ shopId }) {
   const router = useRouter();
+  const onBack = useBackOr("/explore");
   const { t, state, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
-  const shop = getCurrentShop(shopId);
 
-  const onBack = () => router.back();
+  // Calendar is generated from the real current month so the arrows navigate and
+  // the grid never goes stale.
+  const [viewMonth, setViewMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  const shop = getShopById(shopId);
+
+  // A typo'd / stale deep link (e.g. /shops/unknown/book) shouldn't silently
+  // book under the first shop — show a not-found placeholder instead.
+  if (!shop) {
+    return (
+      <section className="h-full overflow-y-auto bg-white px-3.5 pb-16 pt-7 lg:bg-mist">
+        <div className="mx-auto w-full max-w-2xl">
+          <TopBar compact title={t("bookNow")} onBack={onBack} />
+          <div className="mt-10 grid place-items-center gap-4 rounded-[18px] border border-black/10 bg-white px-6 py-14 text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-wash-50 text-wash-500">
+              <Icon name="TriangleAlert" className="h-7 w-7" />
+            </span>
+            <p className="text-sm text-neutral-500">{t("shopNotFound")}</p>
+            <Button onClick={() => router.push("/explore")}>
+              <Icon name="Search" className="h-5 w-5" />
+              {t("exploreCarWashes")}
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const onConfirm = () => {
     if (confirmBooking(shop.id)) router.push("/confirmation");
   };
@@ -34,44 +65,78 @@ export function BookingScreen({ shopId }) {
   const discount = getDiscount(state.selectedPlan, state.selectedServices);
   const total = getTotal(state.selectedPlan, state.selectedServices);
 
+  // A pending free-wash voucher makes the booking free; otherwise the wallet
+  // must cover the total.
+  const redeeming = Boolean(state.pendingVoucher && state.voucher);
+  const charge = redeeming ? 0 : total;
+  const insufficient = charge > state.funds;
+
+  const now = new Date();
+  const atCurrentMonth =
+    viewMonth.getFullYear() === now.getFullYear() && viewMonth.getMonth() === now.getMonth();
+  const todayIso = toIsoDate(now);
+  const grid = buildMonthGrid(viewMonth.getFullYear(), viewMonth.getMonth());
+
   return (
     <section className="h-full overflow-y-auto overflow-x-hidden bg-white px-3.5 pb-16 pt-7 lg:bg-mist">
         <div className="mx-auto w-full max-w-2xl">
         <TopBar compact title={t("bookNow")} subtitle={shop.name} onBack={onBack} />
 
+        {redeeming ? (
+          <div className="mb-3 flex items-center gap-2 rounded-xl bg-lime-50 px-4 py-2 text-sm font-bold text-lime-700">
+            <Icon name="Gift" className="h-4 w-4" />
+            {t("freeWashReady")}
+          </div>
+        ) : null}
+
         <section className="rounded-xl border border-black/20 bg-white p-3">
           <h2 className="font-display text-base font-black">{t("selectDate")}</h2>
           <div className="mt-2 grid grid-cols-[34px_1fr_34px] items-center gap-2">
-            <button type="button" className="grid h-8 w-9 place-items-center rounded border border-black/20">
+            <button
+              type="button"
+              onClick={() => setViewMonth((m) => addMonths(m, -1))}
+              disabled={atCurrentMonth}
+              aria-label={t("prevMonth")}
+              className="grid h-8 w-9 place-items-center rounded border border-black/20 disabled:opacity-40"
+            >
               <Icon name="ArrowLeft" className="h-4 w-4" />
             </button>
-            <strong className="text-center text-neutral-500">{t("monthMay2026")}</strong>
-            <button type="button" className="grid h-8 w-9 place-items-center rounded border border-black/20">
+            <strong className="text-center text-neutral-500">{formatMonthLabel(viewMonth)}</strong>
+            <button
+              type="button"
+              onClick={() => setViewMonth((m) => addMonths(m, 1))}
+              aria-label={t("nextMonth")}
+              className="grid h-8 w-9 place-items-center rounded border border-black/20"
+            >
               <Icon name="ArrowLeft" className="h-4 w-4 rotate-180" />
             </button>
           </div>
           <div className="mt-2 grid grid-cols-7 gap-1">
-            {weekdays.map((day) => (
+            {WEEKDAYS_SHORT.map((day) => (
               <span key={day} className="text-center text-[0.72rem] font-black">
                 {day}
               </span>
             ))}
-            {calendarDays.map((item, index) => {
-              const selected = item.id && item.id === state.selectedDate;
+            {grid.map((cell) => {
+              const selected =
+                cell.iso === state.selectedDate ||
+                (state.selectedDate === "today" && cell.iso === todayIso);
+              const disabled = cell.muted || cell.past;
               return (
                 <button
-                  key={`${item.day}-${index}`}
+                  key={cell.iso}
                   type="button"
-                  onClick={() => item.id && onDate(item.id)}
+                  disabled={disabled}
+                  onClick={() => onDate(cell.iso)}
                   className={`min-h-7 rounded-md text-sm font-bold ${
                     selected
                       ? "bg-wash-500 text-white shadow-cta"
-                      : item.muted
-                        ? "text-neutral-400"
+                      : disabled
+                        ? "text-neutral-300"
                         : "text-ink"
                   }`}
                 >
-                  {item.day}
+                  {cell.day}
                 </button>
               );
             })}
@@ -144,6 +209,14 @@ export function BookingScreen({ shopId }) {
         <section className="mt-3 rounded-xl border border-black/20 bg-white p-3">
           <h2 className="font-display text-base font-black">{t("vehicleDetails")}</h2>
           <label className="mt-3 block">
+            <span className="text-xs font-bold text-neutral-500">{t("vehicleModel")}</span>
+            <input
+              value={state.vehicle.model}
+              onChange={(event) => onVehicle({ model: event.target.value })}
+              className="mt-1 min-h-11 w-full rounded-xl border border-black/10 bg-neutral-100 px-3 outline-none focus:ring-4 focus:ring-wash-500/20"
+            />
+          </label>
+          <label className="mt-3 block">
             <span className="text-xs font-bold text-neutral-500">{t("licensePlate")}</span>
             <input
               value={state.vehicle.plate}
@@ -181,16 +254,40 @@ export function BookingScreen({ shopId }) {
                 <strong>-{formatVnd(discount)}</strong>
               </div>
             ) : null}
+            {redeeming ? (
+              <div className="flex justify-between text-lime-700">
+                <span>{t("freeWashApplied")}</span>
+                <strong>-{formatVnd(total)}</strong>
+              </div>
+            ) : null}
             <div className="flex justify-between border-t border-black/10 pt-2 text-lg font-black">
               <span>{t("total")}</span>
-              <strong>{formatVnd(total)}</strong>
+              <strong>{formatVnd(charge)}</strong>
             </div>
           </div>
         </section>
 
+        {/* Insufficient-balance recovery path — top up without losing the form. */}
+        {insufficient ? (
+          <button
+            type="button"
+            onClick={() => router.push("/topup")}
+            className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl border border-wash-300 bg-wash-50 px-4 py-3 text-left text-sm font-bold text-wash-600"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Icon name="Wallet" className="h-4 w-4" />
+              {t("insufficientBalance")}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              {t("topUpToBook")}
+              <Icon name="Plus" className="h-4 w-4" />
+            </span>
+          </button>
+        ) : null}
+
         {/* Book button lives in the scroll flow (not a pinned footer) with
             bottom padding below, so it reads as the end of the form. */}
-        <Button onClick={onConfirm} disabled={!total} className="mt-5 min-h-[54px] w-full rounded-full px-4">
+        <Button onClick={onConfirm} disabled={!total || insufficient} className="mt-5 min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
             <strong>{t("book")}</strong>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { shops as allShops, userLocation } from "../data/catalog.js";
 import { getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
@@ -12,7 +13,13 @@ import { ShopCard } from "../components/ShopCard.jsx";
 import { ShopDetailCard } from "../components/ShopDetailCard.jsx";
 import { BottomSheet } from "../components/ui/BottomSheet.jsx";
 
-const filterChips = ["exteriorWash", "interiorWash", "detail"];
+// Filter chips map to canonical service ids (the chip copy keys differ from the
+// catalog service ids).
+const filterChips = [
+  { chip: "exteriorWash", service: "exterior", icon: "Car" },
+  { chip: "interiorWash", service: "interior", icon: "Armchair" },
+  { chip: "detail", service: "detailing", icon: "Sparkles" }
+];
 
 export function SearchBar({ value, onChange, t }) {
   return (
@@ -29,24 +36,34 @@ export function SearchBar({ value, onChange, t }) {
   );
 }
 
-export function FilterChips({ t }) {
+export function FilterChips({ t, activeService, onToggleService, onClearFilter }) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto">
-      <button type="button" aria-label="Filters" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-wash-300 text-wash-500">
+      <button
+        type="button"
+        aria-label={t("filters")}
+        onClick={onClearFilter}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-wash-300 text-wash-500"
+      >
         <Icon name="Filter" className="h-4 w-4" />
       </button>
-      {filterChips.map((chip, index) => (
-        <button
-          key={chip}
-          type="button"
-          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-bold ${
-            index === 0 ? "bg-wash-500 text-white" : "border border-black/10 bg-white text-ink"
-          }`}
-        >
-          <Icon name={index === 1 ? "Armchair" : index === 2 ? "TriangleAlert" : "Car"} className="h-4 w-4" />
-          {t(chip)}
-        </button>
-      ))}
+      {filterChips.map(({ chip, service, icon }) => {
+        const active = activeService === service;
+        return (
+          <button
+            key={chip}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onToggleService(service)}
+            className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-bold ${
+              active ? "bg-wash-500 text-white" : "border border-black/10 bg-white text-ink"
+            }`}
+          >
+            <Icon name={icon} className="h-4 w-4" />
+            {t(chip)}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -56,20 +73,28 @@ export function ExploreScreen() {
   const { t, state } = useApp();
   const { router, searchParams, setParams } = useUrlNav();
 
+  const search = searchParams.get("q") ?? "";
+  const activeService = searchParams.get("service") ?? null;
+
   const props = {
     state: {
       ...state,
-      search: searchParams.get("q") ?? "",
-      mapShop: searchParams.get("shop") ?? null
+      search,
+      mapShop: searchParams.get("shop") ?? null,
+      activeService
     },
     t,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
+    onToggleService: (service) => setParams({ service: service === activeService ? null : service }),
+    onClearFilter: () => setParams({ service: null }),
     onSelectMapShop: (id) => setParams({ shop: id }),
     onCloseMapShop: () => setParams({ shop: null }),
     onBook: (id) => router.push(`/shops/${id}/book`)
   };
 
+  // Render nothing until the breakpoint is known, so neither layout flashes.
+  if (isDesktop === null) return null;
   return isDesktop ? <ExploreDesktop {...props} /> : <ExploreMobile {...props} />;
 }
 
@@ -77,8 +102,11 @@ export function ExploreScreen() {
 /* Desktop: persistent sidebar list + map; detail card floats next to  */
 /* the list (images 1 & 2).                                            */
 /* ------------------------------------------------------------------ */
-function ExploreDesktop({ state, t, onSearch, onSelectMapShop, onCloseMapShop, onBook }) {
-  const visibleShops = getVisibleShops(state.search);
+function ExploreDesktop({ state, t, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
+  const visibleShops = useMemo(
+    () => getVisibleShops(state.search, state.activeService),
+    [state.search, state.activeService]
+  );
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
   return (
@@ -86,7 +114,7 @@ function ExploreDesktop({ state, t, onSearch, onSelectMapShop, onCloseMapShop, o
       <aside className="flex w-[380px] shrink-0 flex-col border-r border-black/10 bg-white">
         <div className="grid gap-3 border-b border-black/10 px-4 py-4">
           <SearchBar value={state.search} onChange={onSearch} t={t} />
-          <FilterChips t={t} />
+          <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
         </div>
         <div className="grid gap-3 overflow-y-auto px-4 py-4">
           {visibleShops.length ? (
@@ -118,6 +146,7 @@ function ExploreDesktop({ state, t, onSearch, onSelectMapShop, onCloseMapShop, o
         {selectedShop ? (
           <div className="absolute left-5 top-5 z-[1000] w-[360px] max-w-[calc(100%-2.5rem)]">
             <ShopDetailCard
+              key={selectedShop.id}
               shop={selectedShop}
               t={t}
               variant="desktop"
@@ -137,8 +166,11 @@ function ExploreDesktop({ state, t, onSearch, onSelectMapShop, onCloseMapShop, o
 /* swaps the drawer for the detail sheet; back returns to the list     */
 /* (images 3 & 4).                                                     */
 /* ------------------------------------------------------------------ */
-function ExploreMobile({ state, t, onHome, onSearch, onSelectMapShop, onCloseMapShop, onBook }) {
-  const visibleShops = getVisibleShops(state.search);
+function ExploreMobile({ state, t, onHome, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
+  const visibleShops = useMemo(
+    () => getVisibleShops(state.search, state.activeService),
+    [state.search, state.activeService]
+  );
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
   return (
@@ -152,7 +184,7 @@ function ExploreMobile({ state, t, onHome, onSearch, onSelectMapShop, onCloseMap
       />
 
       <IconButton
-        label="Back"
+        label={t("back")}
         onClick={onHome}
         className="absolute left-4 top-4 z-[1000] bg-white/90 shadow-device backdrop-blur"
       >
@@ -160,9 +192,10 @@ function ExploreMobile({ state, t, onHome, onSearch, onSelectMapShop, onCloseMap
       </IconButton>
 
       {selectedShop ? (
-        <BottomSheet snapPoints={[0.9, 0.5, 0.2]} initialSnapIndex={1}>
+        <BottomSheet snapPoints={[0.9, 0.5, 0.2]} initialSnapIndex={1} handleLabel={t("resizeSheet")}>
           <div className="flex min-h-0 flex-1 flex-col">
             <ShopDetailCard
+              key={selectedShop.id}
               shop={selectedShop}
               t={t}
               variant="mobile"
@@ -175,11 +208,12 @@ function ExploreMobile({ state, t, onHome, onSearch, onSelectMapShop, onCloseMap
         <BottomSheet
           snapPoints={[0.9, 0.5, 0.2]}
           initialSnapIndex={1}
+          handleLabel={t("resizeSheet")}
           handle={<h2 className="px-4 pb-1 pt-2 font-display text-lg font-black">{t("nearbyCarWashes")}</h2>}
         >
           <div className="grid shrink-0 gap-3 px-4 pb-3 pt-1">
             <SearchBar value={state.search} onChange={onSearch} t={t} />
-            <FilterChips t={t} />
+            <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
           </div>
           <div className="grid gap-3 overflow-y-auto px-4 pb-5">
             {visibleShops.length ? (

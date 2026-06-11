@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { formatVnd, getCurrentShop } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
@@ -10,10 +11,24 @@ import { BookingCard } from "./shared/BookingCard.jsx";
 
 export function ConfirmationScreen() {
   const router = useRouter();
-  const { t, state } = useApp();
+  const { t, state, hydrated, redeemVoucher } = useApp();
   const shop = getCurrentShop(state.booking?.shopId);
   const onBookings = () => router.push("/bookings");
   const onHome = () => router.push("/");
+  const onUseVoucher = () => {
+    redeemVoucher();
+    router.push("/explore");
+  };
+
+  // Reaching /confirmation with no booking (deep link / after reset) should not
+  // show a fake success screen — send the user to their bookings instead. Wait
+  // for hydration so a freshly-confirmed booking restored from localStorage
+  // isn't bounced away.
+  useEffect(() => {
+    if (hydrated && !state.booking) router.replace("/bookings");
+  }, [hydrated, state.booking, router]);
+
+  if (!state.booking) return null;
 
   return (
     <section className="relative h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
@@ -40,7 +55,7 @@ export function ConfirmationScreen() {
 
         <div className="mt-5 grid gap-4 text-left">
           {state.booking ? <BookingCard booking={state.booking} shop={shop} t={t} /> : null}
-          <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
+          <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
         </div>
 
         <div className="mt-5 grid gap-3">
