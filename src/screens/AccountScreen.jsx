@@ -56,7 +56,8 @@ function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onTopUp,
           </div>
           <Button
             onClick={onPlans}
-            className="min-h-9 bg-white px-4 text-sm text-wash-500 shadow-none hover:bg-white"
+            variant="onColor"
+            className="min-h-9 px-4 text-sm"
           >
             {t("upgradePlan")}
           </Button>
@@ -146,7 +147,8 @@ function AccountDesktop({ state, t, onHome, onPlans, onTopUp, onReset }) {
               </div>
               <Button
                 onClick={onPlans}
-                className="min-h-9 bg-white px-4 text-sm text-wash-500 shadow-none hover:bg-white"
+                variant="onColor"
+                className="min-h-9 px-4 text-sm"
               >
                 {t("upgradePlan")}
               </Button>

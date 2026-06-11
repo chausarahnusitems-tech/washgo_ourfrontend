@@ -50,7 +50,7 @@ export function RewardsCard({ stamps, voucher, t, onUse }) {
           <span className="text-xs font-black uppercase">{t("freeWash")}</span>
           <h3 className="mt-1 font-display text-xl font-black">{t("voucherTitle")}</h3>
           <p className="mt-1 max-w-[230px] text-sm text-white/85">{t("voucherCopy")}</p>
-          <Button onClick={onUse} className="mt-4 min-h-9 bg-white px-4 text-wash-500 shadow-none hover:bg-white">
+          <Button onClick={onUse} variant="onColor" className="mt-4 min-h-9 px-4">
             {t("useVoucher")}
           </Button>
         </article>

@@ -13,9 +13,56 @@ export const initialState = {
   stamps: 4,
   voucher: false,
   // The most recently confirmed booking (used by the confirmation screen) plus
-  // the full history of booked slots shown on the Bookings page.
+  // the full history of booked slots shown on the Bookings page. Each booking
+  // carries a `status` (upcoming | completed | cancelled); upcoming ones are
+  // editable/cancellable, the rest live under History.
   booking: null,
-  bookings: [],
+  bookings: [
+    {
+      id: "bk-seed-1",
+      shopId: "sparkle",
+      shop: "Sparkle Auto Wash",
+      dateId: "today",
+      date: "Today 26 May",
+      time: "12.00PM",
+      services: ["exterior", "interior"],
+      total: 90000,
+      status: "upcoming"
+    },
+    {
+      id: "bk-seed-2",
+      shopId: "lotus",
+      shop: "Lotus Detail Studio",
+      dateId: "sat",
+      date: "Sat 28 May",
+      time: "2.00PM",
+      services: ["detailing", "wax"],
+      total: 144000,
+      status: "upcoming"
+    },
+    {
+      id: "bk-seed-3",
+      shopId: "saigon",
+      shop: "Saigon Shine Hub",
+      dateId: null,
+      date: "Wed 7 May",
+      time: "10.00AM",
+      services: ["exterior"],
+      total: 45000,
+      status: "completed"
+    },
+    {
+      id: "bk-seed-4",
+      shopId: "sparkle",
+      shop: "Sparkle Auto Wash",
+      dateId: null,
+      date: "Mon 5 May",
+      time: "4.00PM",
+      services: ["detailing"],
+      total: 90000,
+      status: "cancelled"
+    }
+  ],
   selectedServices: ["exterior", "interior"],
   selectedDate: "today",
   selectedTime: "12.00PM",
@@ -82,4 +129,22 @@ export function getVisibleShops(search) {
 
 export function toggleItem(items, item) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
+}
+
+// Bookings without an explicit status are treated as upcoming (covers older
+// persisted state that predates the status field).
+export function getBookingStatus(booking) {
+  return booking?.status ?? "upcoming";
+}
+
+export function getUpcomingBookings(bookings) {
+  return (bookings ?? []).filter((booking) => getBookingStatus(booking) === "upcoming");
+}
+
+export function getHistoryBookings(bookings) {
+  return (bookings ?? []).filter((booking) => getBookingStatus(booking) !== "upcoming");
+}
+
+export function getBookingById(bookings, id) {
+  return (bookings ?? []).find((booking) => booking.id === id) ?? null;
 }
