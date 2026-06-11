@@ -93,6 +93,8 @@ export function ExploreScreen() {
     onBook: (id) => router.push(`/shops/${id}/book`)
   };
 
+  // Render nothing until the breakpoint is known, so neither layout flashes.
+  if (isDesktop === null) return null;
   return isDesktop ? <ExploreDesktop {...props} /> : <ExploreMobile {...props} />;
 }
 

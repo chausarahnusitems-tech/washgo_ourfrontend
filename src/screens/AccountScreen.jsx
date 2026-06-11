@@ -33,6 +33,9 @@ export function AccountScreen() {
     onReset: resetDemo
   };
 
+  // Avoid flashing the mobile layout (full-width red membership card) for a frame
+  // on desktop before the breakpoint resolves.
+  if (isDesktop === null) return null;
   return isDesktop ? <AccountDesktop {...props} /> : <AccountMobile {...props} />;
 }
 

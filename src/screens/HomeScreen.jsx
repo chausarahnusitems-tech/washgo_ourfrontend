@@ -44,6 +44,9 @@ export function HomeScreen() {
     onTopUp: () => router.push("/topup")
   };
 
+  // Render nothing until the breakpoint is known, so the mobile layout never
+  // flashes full-width on desktop (and vice versa).
+  if (isDesktop === null) return null;
   return isDesktop ? <HomeDesktop {...props} /> : <HomeMobile {...props} />;
 }
 
