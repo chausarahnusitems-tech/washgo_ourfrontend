@@ -4,14 +4,18 @@ import { dates, plans, services, shops } from "../data/catalog.js";
 // now lives in the URL — only domain/session state remains here.
 export const initialState = {
   lang: "en",
+  // Membership tier. Unlocks perks + a checkout discount; it no longer funds the
+  // wallet (the cash wallet is topped up separately).
   selectedPlan: "premium",
-  // Seed the premium plan's balance so the marketplace is usable from the Home
-  // landing. (Plan selection is now optional via Account → Upgrade Plan, so we
-  // can no longer rely on that flow to grant the starting tokens.)
-  tokens: 100,
+  // Cash wallet balance in VND. Seeded so the marketplace is usable from the
+  // Home landing; the user tops this up via Account → Top Up Funds.
+  funds: 500000,
   stamps: 4,
   voucher: false,
+  // The most recently confirmed booking (used by the confirmation screen) plus
+  // the full history of booked slots shown on the Bookings page.
   booking: null,
+  bookings: [],
   selectedServices: ["exterior", "interior"],
   selectedDate: "today",
   selectedTime: "12.00PM",
@@ -40,15 +44,24 @@ export function getSelectedServices(selectedServiceIds) {
 }
 
 export function getSubtotal(selectedServiceIds) {
-  return getSelectedServices(selectedServiceIds).reduce((sum, service) => sum + service.token, 0);
+  return getSelectedServices(selectedServiceIds).reduce((sum, service) => sum + service.price, 0);
 }
 
+// Premium members get 10% off, rounded to the nearest 1,000 VND.
 export function getDiscount(selectedPlan, selectedServiceIds) {
-  return selectedPlan === "premium" && getSubtotal(selectedServiceIds) > 0 ? 1 : 0;
+  const subtotal = getSubtotal(selectedServiceIds);
+  if (selectedPlan !== "premium" || subtotal <= 0) return 0;
+  return Math.round((subtotal * 0.1) / 1000) * 1000;
 }
 
 export function getTotal(selectedPlan, selectedServiceIds) {
   return Math.max(0, getSubtotal(selectedServiceIds) - getDiscount(selectedPlan, selectedServiceIds));
+}
+
+// Format a VND amount with dot thousands separators and the ₫ suffix, matching
+// local convention (e.g. 50000 -> "50.000₫").
+export function formatVnd(amount) {
+  return `${Math.round(amount).toLocaleString("en-US").replace(/,/g, ".")}₫`;
 }
 
 export function getSelectedDateLabel(selectedDate, t) {

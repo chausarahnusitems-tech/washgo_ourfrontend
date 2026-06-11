@@ -1,4 +1,5 @@
 import { images } from "../../assets.js";
+import { formatVnd } from "../../lib/booking.js";
 
 export function BookingCard({ booking, shop, t }) {
   return (
@@ -7,7 +8,7 @@ export function BookingCard({ booking, shop, t }) {
       <div className="min-w-0">
         <h2 className="mt-1 truncate font-display text-base font-black">{booking.shop}</h2>
         <p className="mt-2 text-sm text-neutral-600">{booking.date} · {booking.time}</p>
-        <strong className="mt-1 block text-wash-500">{booking.total} {t("tokens")}</strong>
+        <strong className="mt-1 block text-wash-500">{formatVnd(booking.total)}</strong>
       </div>
     </article>
   );

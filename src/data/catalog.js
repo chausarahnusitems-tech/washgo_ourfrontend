@@ -1,6 +1,8 @@
+// Membership tiers. These no longer grant wallet funds — the cash wallet is
+// topped up separately. Membership unlocks perks and a checkout discount.
 export const plans = [
-  { id: "basic", tokens: 50, price: "$9.99/" },
-  { id: "premium", tokens: 100, price: "$19.99/", badge: true }
+  { id: "basic", price: "99.000₫" },
+  { id: "premium", price: "199.000₫", badge: true }
 ];
 
 export const shops = [
@@ -12,7 +14,7 @@ export const shops = [
     distance: "0.4 km",
     rating: "4.9",
     reviews: "2.1k",
-    starting: 10,
+    starting: 50000,
     wait: "12 min",
     services: ["exterior", "interior", "detailing"],
     imagePosition: "object-[58%_center]",
@@ -27,7 +29,7 @@ export const shops = [
     distance: "1.1 km",
     rating: "4.8",
     reviews: "870",
-    starting: 8,
+    starting: 40000,
     wait: "18 min",
     services: ["exterior", "wax", "interior"],
     imagePosition: "object-[42%_center]",
@@ -42,7 +44,7 @@ export const shops = [
     distance: "2.3 km",
     rating: "4.7",
     reviews: "640",
-    starting: 12,
+    starting: 60000,
     wait: "25 min",
     services: ["detailing", "wax", "interior"],
     imagePosition: "object-[74%_center]",
@@ -54,11 +56,12 @@ export const shops = [
 // Approximate "current location" used to centre the map and drop the user pin.
 export const userLocation = { lat: 10.7995, lng: 106.7305 };
 
+// Prices are in Vietnamese Dong (VND), charged against the user's cash wallet.
 export const services = [
-  { id: "exterior", token: 5, icon: "Car" },
-  { id: "interior", token: 5, icon: "Armchair" },
-  { id: "detailing", token: 10, icon: "Sparkles" },
-  { id: "wax", token: 6, icon: "ShieldCheck" }
+  { id: "exterior", price: 50000, icon: "Car" },
+  { id: "interior", price: 50000, icon: "Armchair" },
+  { id: "detailing", price: 100000, icon: "Sparkles" },
+  { id: "wax", price: 60000, icon: "ShieldCheck" }
 ];
 
 export const dates = [

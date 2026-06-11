@@ -2,7 +2,7 @@
 
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
-import { DEFAULT_SHOP_ID, getVisibleShops } from "../lib/booking.js";
+import { DEFAULT_SHOP_ID, formatVnd, getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -40,7 +40,8 @@ export function HomeScreen() {
       router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
     },
     onBook: () => router.push(`/shops/${DEFAULT_SHOP_ID}/book`),
-    onBookings: () => router.push("/bookings")
+    onBookings: () => router.push("/bookings"),
+    onTopUp: () => router.push("/topup")
   };
 
   return isDesktop ? <HomeDesktop {...props} /> : <HomeMobile {...props} />;
@@ -49,7 +50,7 @@ export function HomeScreen() {
 /* ------------------------------------------------------------------ */
 /* Mobile (original single-column marketplace)                         */
 /* ------------------------------------------------------------------ */
-function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService }) {
+function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService, onTopUp }) {
   const visibleShops = getVisibleShops(state.search);
 
   return (
@@ -83,10 +84,16 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
 
       <div className="mt-5 flex items-center justify-between">
         <h2 className="font-display text-base font-black">{t("recommended")}</h2>
-        <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-wash-50 px-3 text-xs font-black text-wash-600">
-          <Icon name="Coins" className="h-4 w-4" />
-          {state.tokens} {t("tokenShort")}
-        </span>
+        <button
+          type="button"
+          onClick={onTopUp}
+          aria-label={t("topUpFunds")}
+          className="inline-flex min-h-8 items-center gap-1 rounded-full bg-wash-50 px-3 text-xs font-black text-wash-600"
+        >
+          <Icon name="Wallet" className="h-4 w-4" />
+          {formatVnd(state.funds)}
+          <Icon name="Plus" className="h-3.5 w-3.5" />
+        </button>
       </div>
       <button
         type="button"

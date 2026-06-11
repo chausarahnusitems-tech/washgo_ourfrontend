@@ -17,6 +17,7 @@ import {
   LocateFixed,
   MapPin,
   MessageCircle,
+  Plus,
   ReceiptText,
   RotateCcw,
   Search,
@@ -26,6 +27,7 @@ import {
   Star,
   TriangleAlert,
   User,
+  Wallet,
   WalletCards,
   X,
   Zap
@@ -50,6 +52,7 @@ const icons = {
   LocateFixed,
   MapPin,
   MessageCircle,
+  Plus,
   ReceiptText,
   RotateCcw,
   Search,
@@ -59,6 +62,7 @@ const icons = {
   Star,
   TriangleAlert,
   User,
+  Wallet,
   WalletCards,
   X,
   Zap

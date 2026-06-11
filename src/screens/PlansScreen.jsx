@@ -8,12 +8,11 @@ import { Icon } from "../components/ui/Icon.jsx";
 
 export function PlansScreen() {
   const router = useRouter();
-  const { t, state, setLang: onLang, setSelectedPlan: onSelectPlan, continuePlan } = useApp();
+  const { t, state, setLang: onLang, setSelectedPlan: onSelectPlan } = useApp();
   const onBack = () => router.back();
-  const onContinue = () => {
-    continuePlan();
-    router.push("/account");
-  };
+  // Membership selection only updates the active tier; the cash wallet is topped
+  // up separately, so confirming a plan just returns to the account page.
+  const onContinue = () => router.push("/account");
   return (
     <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white lg:bg-mist">
       <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-7">

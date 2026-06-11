@@ -62,12 +62,11 @@ export function AppProvider({ children }) {
     setState((prev) => ({ ...prev, selectedPlan }));
   }, []);
 
-  // Grant the plan's token balance (membership purchase).
-  const continuePlan = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      tokens: prev.selectedPlan === "premium" ? 100 : 50
-    }));
+  // Add cash to the wallet (fake local top-up; the backend will replace this).
+  const topUpFunds = useCallback((amount) => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return;
+    setState((prev) => ({ ...prev, funds: prev.funds + Math.round(value) }));
   }, []);
 
   const setVehicle = useCallback((patch) => {
@@ -102,21 +101,26 @@ export function AppProvider({ children }) {
       const shop = getCurrentShop(shopId);
       const nextStamps = Math.min(5, prev.stamps + 1);
 
+      const booking = {
+        id: `bk-${prev.bookings.length + 1}-${Date.now()}`,
+        shopId: shop.id,
+        shop: shop.name,
+        date: getSelectedDateLabel(
+          prev.selectedDate,
+          (key) => copy[prev.lang][key] ?? copy.en[key] ?? key
+        ),
+        time: prev.selectedTime,
+        services: [...prev.selectedServices],
+        total
+      };
+
       return {
         ...prev,
-        tokens: Math.max(0, prev.tokens - total),
+        funds: Math.max(0, prev.funds - total),
         stamps: nextStamps,
         voucher: nextStamps >= 5,
-        booking: {
-          shopId: shop.id,
-          shop: shop.name,
-          date: getSelectedDateLabel(
-            prev.selectedDate,
-            (key) => copy[prev.lang][key] ?? copy.en[key] ?? key
-          ),
-          time: prev.selectedTime,
-          total
-        }
+        booking,
+        bookings: [booking, ...prev.bookings]
       };
     });
     return ok;
@@ -133,7 +137,7 @@ export function AppProvider({ children }) {
       t,
       setLang,
       setSelectedPlan,
-      continuePlan,
+      topUpFunds,
       setVehicle,
       toggleService,
       setDate,
@@ -141,7 +145,7 @@ export function AppProvider({ children }) {
       confirmBooking,
       resetDemo
     }),
-    [state, t, setLang, setSelectedPlan, continuePlan, setVehicle, toggleService, setDate, setTime, confirmBooking, resetDemo]
+    [state, t, setLang, setSelectedPlan, topUpFunds, setVehicle, toggleService, setDate, setTime, confirmBooking, resetDemo]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

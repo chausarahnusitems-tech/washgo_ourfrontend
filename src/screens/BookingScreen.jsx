@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { calendarDays, services, times } from "../data/catalog.js";
 import {
+  formatVnd,
   getCurrentShop,
   getDiscount,
   getSelectedDateLabel,
@@ -34,8 +35,7 @@ export function BookingScreen({ shopId }) {
   const total = getTotal(state.selectedPlan, state.selectedServices);
 
   return (
-    <>
-      <section className="h-full overflow-y-auto overflow-x-hidden bg-white px-3.5 pb-5 pt-7 lg:bg-mist">
+    <section className="h-full overflow-y-auto overflow-x-hidden bg-white px-3.5 pb-16 pt-7 lg:bg-mist">
         <div className="mx-auto w-full max-w-2xl">
         <TopBar compact title={t("bookNow")} subtitle={shop.name} onBack={onBack} />
 
@@ -121,7 +121,7 @@ export function BookingScreen({ shopId }) {
                     <strong>{t(service.id)}</strong>
                   </span>
                   <span>
-                    {service.token} {t("tokenShort")} · {selected ? t("selected") : t("add")}
+                    {formatVnd(service.price)} · {selected ? t("selected") : t("add")}
                   </span>
                 </button>
               );
@@ -137,7 +137,7 @@ export function BookingScreen({ shopId }) {
               {shop.name} <Icon name="ShieldCheck" className="h-4 w-4" />
             </h2>
             <p className="mt-1 text-xs text-neutral-600">{selectedServices.map((service) => t(service.id)).join(" · ")}</p>
-            <strong className="mt-1 block">{subtotal} {t("tokens")}</strong>
+            <strong className="mt-1 block">{formatVnd(subtotal)}</strong>
           </div>
         </section>
 
@@ -163,41 +163,42 @@ export function BookingScreen({ shopId }) {
         </section>
 
         <section className="mt-3 rounded-xl border border-black/20 bg-white p-3">
-          <h2 className="font-display text-base font-black">{t("tokenDetails")}</h2>
+          <h2 className="font-display text-base font-black">{t("paymentDetails")}</h2>
           <div className="mt-3 grid gap-2 text-sm">
             {selectedServices.map((service) => (
               <div key={service.id} className="flex justify-between">
                 <span>{t(service.id)}</span>
-                <strong>{service.token}</strong>
+                <strong>{formatVnd(service.price)}</strong>
               </div>
             ))}
+            <div className="flex justify-between text-neutral-500">
+              <span>{t("subtotal")}</span>
+              <strong>{formatVnd(subtotal)}</strong>
+            </div>
             {discount ? (
               <div className="flex justify-between text-lime-700">
                 <span>{t("discount")}</span>
-                <strong>-{discount}</strong>
+                <strong>-{formatVnd(discount)}</strong>
               </div>
             ) : null}
             <div className="flex justify-between border-t border-black/10 pt-2 text-lg font-black">
               <span>{t("total")}</span>
-              <strong>{total}</strong>
+              <strong>{formatVnd(total)}</strong>
             </div>
           </div>
         </section>
-        </div>
-      </section>
 
-      <footer className="border-t border-black/20 bg-white px-2 py-4">
-        <div className="mx-auto w-full max-w-2xl">
-        <Button onClick={onConfirm} disabled={!total} className="min-h-[54px] w-full rounded-full px-4">
+        {/* Book button lives in the scroll flow (not a pinned footer) with
+            bottom padding below, so it reads as the end of the form. */}
+        <Button onClick={onConfirm} disabled={!total} className="mt-5 min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
-            <strong>{t("confirmBooking")}</strong>
+            <strong>{t("book")}</strong>
             <small className="text-white/85">{getSelectedDateLabel(state.selectedDate, t)}, {state.selectedTime}</small>
           </span>
           <Icon name="ArrowLeft" className="h-5 w-5 rotate-180" />
         </Button>
         </div>
-      </footer>
-    </>
+      </section>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
+import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { TopBar } from "../components/layout/TopBar.jsx";
@@ -22,6 +23,7 @@ export function AccountScreen() {
     onHome: () => router.push("/"),
     onPlans: () => router.push("/plans"),
     onVouchers: () => router.push("/vouchers"),
+    onTopUp: () => router.push("/topup"),
     onReset: resetDemo
   };
 
@@ -31,7 +33,7 @@ export function AccountScreen() {
 /* ------------------------------------------------------------------ */
 /* Mobile (original)                                                   */
 /* ------------------------------------------------------------------ */
-function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onReset }) {
+function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onTopUp, onReset }) {
   return (
     <section className="grid h-full content-start gap-4 overflow-y-auto bg-white px-4 py-7">
       <TopBar compact title={t("account")} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
@@ -42,20 +44,36 @@ function AccountMobile({ state, t, onLang, onHome, onPlans, onVouchers, onReset 
           <p className="mt-1 text-sm text-neutral-600">{t("memberSince")}</p>
         </div>
       </div>
-      <section className="min-h-[154px] rounded-[18px] bg-[radial-gradient(circle_at_88%_22%,rgba(255,255,255,0.35),transparent_22%),linear-gradient(135deg,#c40000,#ff1208_68%,#ff7568)] p-6 text-white">
-        <h2 className="font-display text-2xl font-black">{state.selectedPlan === "premium" ? t("premium") : t("basic")} Member</h2>
-        <p className="mt-3 text-sm text-white/90">
-          {t("memberUntil")}
-          <br />
-          <strong>{t("dateUntil")}</strong>
-        </p>
+      <section className="rounded-[18px] bg-[radial-gradient(circle_at_88%_22%,rgba(255,255,255,0.35),transparent_22%),linear-gradient(135deg,#c40000,#ff1208_68%,#ff7568)] p-6 text-white">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-2xl font-black">{state.selectedPlan === "premium" ? t("premium") : t("basic")} Member</h2>
+            <p className="mt-3 text-sm text-white/90">
+              {t("memberUntil")}
+              <br />
+              <strong>{t("dateUntil")}</strong>
+            </p>
+          </div>
+          <Button
+            onClick={onPlans}
+            className="min-h-9 bg-white px-4 text-sm text-wash-500 shadow-none hover:bg-white"
+          >
+            {t("upgradePlan")}
+          </Button>
+        </div>
       </section>
       <section className="flex min-h-[94px] items-center justify-between gap-4 rounded-xl border border-black/20 bg-white px-6 py-5">
         <div>
-          <span className="text-neutral-600">{t("myTokens")}</span>
-          <strong className="block text-2xl">{state.tokens}</strong>
+          <span className="flex items-center gap-1.5 text-neutral-600">
+            <Icon name="Wallet" className="h-4 w-4" />
+            {t("myWallet")}
+          </span>
+          <strong className="block text-2xl">{formatVnd(state.funds)}</strong>
         </div>
-        <Button onClick={onPlans} className="min-h-9 px-4 text-sm">{t("upgradePlan")}</Button>
+        <Button onClick={onTopUp} className="min-h-9 px-4 text-sm">
+          <Icon name="Plus" className="h-4 w-4" />
+          {t("topUp")}
+        </Button>
       </section>
       <VoucherAccess count={state.voucher ? 2 : 1} t={t} onClick={onVouchers} />
       <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
@@ -85,7 +103,7 @@ function RewardTile({ title, expires, tone, t }) {
   );
 }
 
-function AccountDesktop({ state, t, onHome, onPlans, onReset }) {
+function AccountDesktop({ state, t, onHome, onPlans, onTopUp, onReset }) {
   return (
     <section className="h-full overflow-y-auto bg-mist">
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[340px_1fr] gap-6 px-6 py-8 xl:px-10">
@@ -98,10 +116,16 @@ function AccountDesktop({ state, t, onHome, onPlans, onReset }) {
 
             <div className="mt-5 flex w-full items-center justify-between gap-3 rounded-2xl bg-wash-50 p-4">
               <div className="text-left">
-                <span className="block text-sm text-neutral-600">{t("myTokens")}</span>
-                <strong className="block text-2xl font-black">{state.tokens}</strong>
+                <span className="flex items-center gap-1.5 text-sm text-neutral-600">
+                  <Icon name="Wallet" className="h-4 w-4" />
+                  {t("myWallet")}
+                </span>
+                <strong className="block text-2xl font-black">{formatVnd(state.funds)}</strong>
               </div>
-              <Button onClick={onPlans} className="min-h-9 px-4 text-sm">{t("upgradePlan")}</Button>
+              <Button onClick={onTopUp} className="min-h-9 px-4 text-sm">
+                <Icon name="Plus" className="h-4 w-4" />
+                {t("topUp")}
+              </Button>
             </div>
           </div>
           <Button variant="secondary" onClick={onReset}>{t("resetDemo")}</Button>
@@ -110,13 +134,23 @@ function AccountDesktop({ state, t, onHome, onPlans, onReset }) {
         {/* Right: membership + rewards */}
         <div className="flex flex-col gap-6">
           <section className="relative min-h-[150px] overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_88%_20%,rgba(255,255,255,0.3),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-7 text-white">
-            <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
-            <p className="mt-3 text-sm text-white/90">
-              {t("renewOn")}
-              <br />
-              <strong>{t("dateUntil")}</strong>
-            </p>
-            <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
+                <p className="mt-3 text-sm text-white/90">
+                  {t("renewOn")}
+                  <br />
+                  <strong>{t("dateUntil")}</strong>
+                </p>
+                <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+              </div>
+              <Button
+                onClick={onPlans}
+                className="min-h-9 bg-white px-4 text-sm text-wash-500 shadow-none hover:bg-white"
+              >
+                {t("upgradePlan")}
+              </Button>
+            </div>
           </section>
 
           <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onHome} />
