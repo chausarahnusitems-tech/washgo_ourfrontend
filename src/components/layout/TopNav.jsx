@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { images, icons as svgIcons } from "../../assets.js";
+import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
 import { Icon } from "../ui/Icon.jsx";
@@ -17,9 +17,13 @@ function activeKey(pathname) {
 }
 
 export function TopNav({ className }) {
-  const { t, lang, setLang } = useApp();
+  const { t, lang, setLang, auth } = useApp();
   const pathname = usePathname();
   const active = activeKey(pathname);
+
+  const isSignedIn = Boolean(auth?.user);
+  const displayName = isSignedIn ? auth.profile?.full_name || auth.user.email : null;
+  const avatarUrl = isSignedIn ? auth.profile?.avatar_url || null : null;
 
   const links = [
     { key: "explore", label: t("explore"), href: "/explore" },
@@ -78,21 +82,36 @@ export function TopNav({ className }) {
             ))}
           </div>
 
-          <Link
-            href="/account"
-            aria-current={active === "account" ? "page" : undefined}
-            className={cx(
-              "flex items-center gap-2 rounded-full border bg-white py-1 pl-1 pr-2 transition hover:bg-neutral-50",
-              active === "account" ? "border-wash-300" : "border-black/10"
-            )}
-          >
-            <img src={images.profile} alt="" className="h-9 w-9 rounded-full object-cover" />
-            <span className="hidden text-left leading-tight sm:block">
-              <span className="block text-sm font-black text-ink">{t("profileName")}</span>
-              <span className="block text-xs font-semibold text-wash-500">{t("proMember")}</span>
-            </span>
-            <Icon name="ChevronDown" className="h-4 w-4 text-neutral-500" />
-          </Link>
+          {isSignedIn ? (
+            <Link
+              href="/account"
+              aria-current={active === "account" ? "page" : undefined}
+              className={cx(
+                "flex items-center gap-2 rounded-full border bg-white py-1 pl-1 pr-2 transition hover:bg-neutral-50",
+                active === "account" ? "border-wash-300" : "border-black/10"
+              )}
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
+              ) : (
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-neutral-100 text-neutral-400">
+                  <Icon name="User" className="h-5 w-5" />
+                </span>
+              )}
+              <span className="hidden max-w-[160px] text-left leading-tight sm:block">
+                <span className="block truncate text-sm font-black text-ink">{displayName}</span>
+              </span>
+              <Icon name="ChevronDown" className="h-4 w-4 text-neutral-500" />
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-wash-500 px-4 text-sm font-bold text-white shadow-cta transition hover:bg-wash-600"
+            >
+              <Icon name="User" className="h-4 w-4" />
+              {t("signIn")}
+            </Link>
+          )}
         </div>
       </div>
     </header>

@@ -5,11 +5,10 @@ import { dates, plans, services, shops } from "../data/catalog.js";
 export const initialState = {
   lang: "en",
   selectedPlan: "premium",
-  // Seed the premium plan's balance so the marketplace is usable from the Home
-  // landing. (Plan selection is now optional via Account → Upgrade Plan, so we
-  // can no longer rely on that flow to grant the starting tokens.)
-  tokens: 100,
-  stamps: 4,
+  // No seeded balance: personal data (tokens, stamps, vouchers) only exists for
+  // a signed-in user, loaded from their Supabase profile. Signed-out is empty.
+  tokens: 0,
+  stamps: 0,
   voucher: false,
   booking: null,
   selectedServices: ["exterior", "interior"],

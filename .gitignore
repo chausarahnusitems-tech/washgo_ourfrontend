@@ -5,3 +5,7 @@ out/
 next-env.d.ts
 *.log
 .DS_Store
+
+# Local env / secrets
+.env*
+!.env.example
