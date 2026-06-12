@@ -16,9 +16,11 @@ const presets = [50000, 100000, 200000, 500000, 1000000, 2000000];
 
 export function TopUpScreen() {
   const router = useRouter();
-  const { t, state, topUpFunds } = useApp();
+  const { t, state, topUpFunds, requireAuth } = useApp();
   const [amount, setAmount] = useState(100000);
   const [custom, setCustom] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
 
   const onBack = useBackOr("/account");
 
@@ -36,10 +38,21 @@ export function TopUpScreen() {
   const valid = amount > 0;
   const newBalance = state.funds + (valid ? amount : 0);
 
-  const onAdd = () => {
-    if (!valid) return;
-    topUpFunds(amount);
-    router.push("/account");
+  const onAdd = async () => {
+    if (!valid || pending) return;
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    setError("");
+    setPending(true);
+    const ok = await topUpFunds(amount);
+    if (ok) {
+      router.push("/account");
+      return;
+    }
+    setPending(false);
+    setError("Top-up failed. Please try again.");
   };
 
   return (
@@ -113,9 +126,14 @@ export function TopUpScreen() {
             <span className="text-neutral-500">{t("newBalance")}</span>
             <strong className="font-display text-lg font-black text-wash-500">{formatVnd(newBalance)}</strong>
           </div>
-          <Button onClick={onAdd} disabled={!valid} className="min-h-[54px] w-full rounded-full">
+          {error ? (
+            <p aria-live="polite" className="mb-3 text-sm font-bold text-wash-500">
+              {error}
+            </p>
+          ) : null}
+          <Button onClick={onAdd} disabled={!valid || pending} className="min-h-[54px] w-full rounded-full">
             <Icon name="Plus" className="h-5 w-5" />
-            {t("addFunds")} {valid ? formatVnd(amount) : ""}
+            {pending ? "..." : `${t("addFunds")} ${valid ? formatVnd(amount) : ""}`}
           </Button>
         </div>
       </footer>

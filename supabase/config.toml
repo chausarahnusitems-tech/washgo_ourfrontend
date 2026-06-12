@@ -1,0 +1,4 @@
+# Minimal Supabase CLI config. Run `supabase link --project-ref zbxpykegoycklijvwkgq`
+# to attach this repo to the live project, then `supabase db push` applies any
+# unapplied files from supabase/migrations/ in version order.
+project_id = "washgo"

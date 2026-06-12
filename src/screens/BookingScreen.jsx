@@ -3,13 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { services, times } from "../data/catalog.js";
+import { times } from "../data/catalog.js";
 import {
   formatVnd,
   getDiscount,
   getSelectedDateLabel,
   getSelectedServices,
-  getShopById,
   getSubtotal,
   getTotal
 } from "../lib/booking.js";
@@ -23,7 +22,7 @@ import { TopBar } from "../components/layout/TopBar.jsx";
 export function BookingScreen({ shopId }) {
   const router = useRouter();
   const onBack = useBackOr("/explore");
-  const { t, state, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
+  const { t, state, catalog, requireAuth, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
 
   // Calendar is generated from the real current month so the arrows navigate and
   // the grid never goes stale.
@@ -32,7 +31,9 @@ export function BookingScreen({ shopId }) {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
-  const shop = getShopById(shopId);
+  // Resolve from the same live catalog the rest of the screen reads, so a valid
+  // DB shop isn't briefly mistaken for not-found on a deep link.
+  const shop = (catalog.shops ?? []).find((s) => s.id === shopId) ?? null;
 
   // A typo'd / stale deep link (e.g. /shops/unknown/book) shouldn't silently
   // book under the first shop — show a not-found placeholder instead.
@@ -56,8 +57,13 @@ export function BookingScreen({ shopId }) {
     );
   }
 
-  const onConfirm = () => {
-    if (confirmBooking(shop.id)) router.push("/confirmation");
+  const onConfirm = async () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    const ok = await confirmBooking(shop.id);
+    if (ok) router.push("/confirmation");
   };
 
   const selectedServices = getSelectedServices(state.selectedServices);
@@ -169,7 +175,7 @@ export function BookingScreen({ shopId }) {
           <h2 className="font-display text-base font-black">{t("chooseServices")}</h2>
           <p className="mt-1 text-xs text-neutral-500">{t("serviceHint")}</p>
           <div className="mt-3 grid gap-2">
-            {services.map((service) => {
+            {catalog.services.map((service) => {
               const selected = state.selectedServices.includes(service.id);
               return (
                 <button

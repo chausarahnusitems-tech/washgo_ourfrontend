@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { cx } from "../lib/cx.js";
 import { formatVnd } from "../lib/booking.js";
@@ -8,8 +9,17 @@ import { Icon } from "./ui/Icon.jsx";
 import { IconButton } from "./ui/Button.jsx";
 
 export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
-  const { state, toggleFavorite } = useApp();
+  const router = useRouter();
+  const { state, toggleFavorite, requireAuth } = useApp();
   const isFav = (state.favorites ?? []).includes(shop.id);
+
+  const onToggleFav = () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    toggleFavorite(shop.id);
+  };
 
   return (
     <article
@@ -49,7 +59,7 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
             <IconButton
               label={isFav ? t("saved") : t("save")}
               aria-pressed={isFav}
-              onClick={() => toggleFavorite(shop.id)}
+              onClick={onToggleFav}
               className="h-9 w-9"
             >
               <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />
