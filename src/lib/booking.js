@@ -1,4 +1,5 @@
-import { dates, plans, services, shops } from "../data/catalog.js";
+import { dates } from "../data/catalog.js";
+import { getCatalog } from "./catalog-store.js";
 import { formatIsoLabel } from "./calendar.js";
 
 // Navigation state (screen, selectedShop, mapShop, quickShop, search, prevScreen)
@@ -90,20 +91,24 @@ export const initialState = {
 export const DEFAULT_SHOP_ID = "sparkle";
 
 export function getCurrentPlan(selectedPlan) {
+  const { plans } = getCatalog();
   return plans.find((plan) => plan.id === selectedPlan) ?? plans[1];
 }
 
 export function getCurrentShop(selectedShop) {
+  const { shops } = getCatalog();
   return shops.find((shop) => shop.id === selectedShop) ?? shops[0];
 }
 
 // Strict lookup that returns null for an unknown id (unlike getCurrentShop,
 // which falls back to shops[0]). Used to detect typo'd / stale deep links.
 export function getShopById(id) {
+  const { shops } = getCatalog();
   return shops.find((shop) => shop.id === id) ?? null;
 }
 
 export function getSelectedServices(selectedServiceIds) {
+  const { services } = getCatalog();
   const selected = new Set(selectedServiceIds);
   return services.filter((service) => selected.has(service.id));
 }
@@ -141,6 +146,7 @@ export function getSelectedDateLabel(selectedDate, t) {
 }
 
 export function getVisibleShops(search, serviceId = null) {
+  const { shops } = getCatalog();
   const needle = (search ?? "").trim().toLowerCase();
 
   return shops.filter((shop) => {

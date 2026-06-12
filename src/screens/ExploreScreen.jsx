@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { shops as allShops, userLocation } from "../data/catalog.js";
+import { userLocation } from "../data/catalog.js";
 import { getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
@@ -70,8 +70,12 @@ export function FilterChips({ t, activeService, onToggleService, onClearFilter }
 
 export function ExploreScreen() {
   const isDesktop = useIsDesktop();
-  const { t, state } = useApp();
+  const { t, state, catalog } = useApp();
   const { router, searchParams, setParams } = useUrlNav();
+
+  // Live reference catalog (DB-backed in backend mode, seed in demo). Guard for
+  // it being empty on the first paint before the DB fetch resolves.
+  const allShops = catalog.shops ?? [];
 
   const search = searchParams.get("q") ?? "";
   const activeService = searchParams.get("service") ?? null;
@@ -83,6 +87,7 @@ export function ExploreScreen() {
       mapShop: searchParams.get("shop") ?? null,
       activeService
     },
+    allShops,
     t,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
@@ -102,10 +107,12 @@ export function ExploreScreen() {
 /* Desktop: persistent sidebar list + map; detail card floats next to  */
 /* the list (images 1 & 2).                                            */
 /* ------------------------------------------------------------------ */
-function ExploreDesktop({ state, t, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
+function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
   const visibleShops = useMemo(
+    // `allShops` is in the deps so this recomputes when the DB catalog arrives
+    // after first paint (getVisibleShops reads the live catalog store).
     () => getVisibleShops(state.search, state.activeService),
-    [state.search, state.activeService]
+    [state.search, state.activeService, allShops]
   );
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
@@ -166,10 +173,12 @@ function ExploreDesktop({ state, t, onSearch, onToggleService, onClearFilter, on
 /* swaps the drawer for the detail sheet; back returns to the list     */
 /* (images 3 & 4).                                                     */
 /* ------------------------------------------------------------------ */
-function ExploreMobile({ state, t, onHome, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
+function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
   const visibleShops = useMemo(
+    // `allShops` is in the deps so this recomputes when the DB catalog arrives
+    // after first paint (getVisibleShops reads the live catalog store).
     () => getVisibleShops(state.search, state.activeService),
-    [state.search, state.activeService]
+    [state.search, state.activeService, allShops]
   );
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 

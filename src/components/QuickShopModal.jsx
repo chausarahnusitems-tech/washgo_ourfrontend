@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { shops } from "../data/catalog.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { ShopCard } from "./ShopCard.jsx";
 import { Button } from "./ui/Button.jsx";
@@ -12,13 +11,13 @@ import { Button } from "./ui/Button.jsx";
  * inlined in App.jsx with a `quickShop` state field.
  */
 export function QuickShopModal() {
-  const { t } = useApp();
+  const { t, catalog } = useApp();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const quickId = searchParams.get("quick");
-  const shop = quickId ? shops.find((item) => item.id === quickId) : null;
+  const shop = quickId ? (catalog.shops ?? []).find((item) => item.id === quickId) : null;
   if (!shop) return null;
 
   const close = () => {

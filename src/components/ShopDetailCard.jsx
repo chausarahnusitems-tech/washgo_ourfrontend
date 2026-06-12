@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
 import { formatVnd } from "../lib/booking.js";
@@ -34,13 +35,22 @@ function ServiceChips({ shop, t }) {
  * returns to the list, `onClose` (desktop) dismisses the card.
  */
 export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "desktop", className }) {
-  const { state, toggleFavorite } = useApp();
+  const router = useRouter();
+  const { state, toggleFavorite, requireAuth } = useApp();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   if (!shop) return null;
 
   const isMobile = variant === "mobile";
   const isFav = (state.favorites ?? []).includes(shop.id);
+
+  const onToggleFav = () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    toggleFavorite(shop.id);
+  };
 
   // Share via the Web Share API where available, falling back to copying the
   // link to the clipboard (with a brief "Link copied" confirmation). No backend.
@@ -81,7 +91,7 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
             <IconButton
               label={isFav ? t("saved") : t("save")}
               aria-pressed={isFav}
-              onClick={() => toggleFavorite(shop.id)}
+              onClick={onToggleFav}
               className="h-9 w-9 bg-neutral-100"
             >
               <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />

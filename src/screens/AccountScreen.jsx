@@ -176,9 +176,12 @@ export function AccountScreen() {
   const isDesktop = useIsDesktop();
   const router = useRouter();
 
-  const { t, state, auth, signOut, setLang, resetDemo, redeemVoucher } = useApp();
+  const { t, state, auth, mode, requireAuth, signOut, setLang, resetDemo, redeemVoucher } = useApp();
 
   const isSignedIn = Boolean(auth?.user);
+  // The wallet ledger only exists for a signed-in backend account, so the
+  // "View transactions" link is hidden in demo mode (and while signed out).
+  const showTransactions = !requireAuth && mode === "backend";
   // Real identity only — no mock profile. Signed-out shows a neutral "Guest"
   // with no avatar/member date.
   const displayName = isSignedIn
@@ -194,6 +197,7 @@ export function AccountScreen() {
     state,
     t,
     isSignedIn,
+    showTransactions,
     displayName,
     avatarUrl,
     memberSince,
@@ -205,6 +209,7 @@ export function AccountScreen() {
     onAuth: isSignedIn ? signOut : () => router.push("/login"),
     onRewards: () => router.push("/rewards"),
     onTopUp: () => router.push("/topup"),
+    onTransactions: () => router.push("/transactions"),
     // Mark the free wash to be applied, then send the user to pick a shop.
     onUseVoucher: () => {
       redeemVoucher();
@@ -236,7 +241,7 @@ function SignedOutPrompt({ t, onAuth }) {
 /* Mobile (original)                                                   */
 /* ------------------------------------------------------------------ */
 
-function AccountMobile({ state, t, isSignedIn, displayName, avatarUrl, memberSince, onLang, onHome, onPlans, onVouchers, onReset, onAuth, onRewards, onTopUp, onUseVoucher }) {
+function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onLang, onHome, onPlans, onVouchers, onReset, onAuth, onRewards, onTopUp, onTransactions, onUseVoucher }) {
   return (
     <section className="grid h-full content-start gap-4 overflow-y-auto bg-white px-4 py-7">
       <TopBar compact title={t("account")} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
@@ -280,6 +285,19 @@ function AccountMobile({ state, t, isSignedIn, displayName, avatarUrl, memberSin
               {t("topUp")}
             </Button>
           </section>
+          {showTransactions ? (
+            <button
+              type="button"
+              onClick={onTransactions}
+              className="flex items-center justify-between gap-3 rounded-xl border border-black/20 bg-white px-6 py-4 text-left"
+            >
+              <span className="flex items-center gap-1.5 font-semibold text-neutral-600">
+                <Icon name="WalletCards" className="h-4 w-4" />
+                {t("viewTransactions")}
+              </span>
+              <Icon name="ChevronRight" className="h-5 w-5 text-neutral-400" />
+            </button>
+          ) : null}
           <VoucherAccess count={getVouchers(state.voucher, t).length} t={t} onClick={onVouchers} />
           <div className="flex items-center justify-between">
             <h2 className="font-display text-base font-black">{t("rewardsTitle")}</h2>
@@ -319,7 +337,7 @@ function RewardTile({ title, expires, tone, t }) {
   );
 }
 
-function AccountDesktop({ state, t, isSignedIn, displayName, avatarUrl, memberSince, onPlans, onRewards, onReset, onAuth, onTopUp, onUseVoucher }) {
+function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onPlans, onRewards, onReset, onAuth, onTopUp, onTransactions, onUseVoucher }) {
   return (
     <section className="h-full overflow-y-auto bg-mist">
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[340px_1fr] gap-6 px-6 py-8 xl:px-10">
@@ -344,6 +362,20 @@ function AccountDesktop({ state, t, isSignedIn, displayName, avatarUrl, memberSi
                   {t("topUp")}
                 </Button>
               </div>
+            ) : null}
+
+            {isSignedIn && showTransactions ? (
+              <button
+                type="button"
+                onClick={onTransactions}
+                className="mt-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-black/10 px-4 py-3 text-left"
+              >
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-600">
+                  <Icon name="WalletCards" className="h-4 w-4" />
+                  {t("viewTransactions")}
+                </span>
+                <Icon name="ChevronRight" className="h-5 w-5 text-neutral-400" />
+              </button>
             ) : null}
           </div>
           <Button variant="secondary" onClick={onAuth}>

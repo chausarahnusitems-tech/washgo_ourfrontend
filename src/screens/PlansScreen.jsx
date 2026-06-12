@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { plans } from "../data/catalog.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useBackOr } from "../lib/useBackOr.js";
 import { Button, IconButton } from "../components/ui/Button.jsx";
@@ -9,7 +8,8 @@ import { Icon } from "../components/ui/Icon.jsx";
 
 export function PlansScreen() {
   const router = useRouter();
-  const { t, state, setLang: onLang, setSelectedPlan: onSelectPlan } = useApp();
+  const { t, state, catalog, setLang: onLang, setSelectedPlan: onSelectPlan } = useApp();
+  const plans = catalog.plans ?? [];
   const onBack = useBackOr("/account");
   // Membership selection only updates the active tier; the cash wallet is topped
   // up separately, so confirming a plan just returns to the account page.
