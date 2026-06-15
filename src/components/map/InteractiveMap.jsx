@@ -48,6 +48,7 @@ export function InteractiveMap({
   shops = [],
   selectedId = null,
   onSelectShop,
+  onPick,
   userLocation,
   className,
   rounded = "rounded-none",
@@ -58,6 +59,10 @@ export function InteractiveMap({
   const markersRef = useRef({});
   const selectRef = useRef(onSelectShop);
   selectRef.current = onSelectShop;
+  // Optional location-picker callback (owner shop form). Mirrored in a ref so the
+  // once-only init effect can read the latest handler without re-initialising.
+  const pickRef = useRef(onPick);
+  pickRef.current = onPick;
   // Mirror the latest props in refs so the marker-build / flyTo effects can read
   // them without listing `shops` as a dependency (it's a fresh array each render).
   const selectedIdRef = useRef(selectedId);
@@ -91,6 +96,12 @@ export function InteractiveMap({
         .setLngLat([userLocation.lng, userLocation.lat])
         .addTo(map);
     }
+
+    // Location picker: clicking anywhere reports the dropped coordinate. The
+    // caller renders the picked point back as a single shop pin via `shops`.
+    map.on("click", (event) => {
+      pickRef.current?.(event.lngLat.lat, event.lngLat.lng);
+    });
 
     mapRef.current = map;
     // Containers that mount during a layout/transition can mis-measure; nudge.

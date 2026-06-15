@@ -116,3 +116,218 @@ export async function removeFavorite(supabase, userId, shopId) {
     await supabase.from("favorites").delete().eq("user_id", userId).eq("shop_id", shopId)
   );
 }
+
+// ---- Shop owner reads/writes ----------------------------------------------
+// The owner area binds forms directly to raw DB columns (starting_price,
+// wait_minutes, status, …), so these functions deliberately DON'T run rows
+// through adaptShop (which formats for the customer UI and computes distance).
+
+// Columns an owner is allowed to write (mirrors the column grants in
+// 20260612000600_owners_approval.sql). owner_id/status/rating/reviews_count are
+// intentionally excluded — they move via RLS defaults, set_shop_status() and
+// the reviews trigger respectively.
+const SHOP_WRITE_COLUMNS = [
+  "name", "district", "address", "phone", "starting_price", "wait_minutes",
+  "hours", "is_open", "promo", "lat", "lng", "image_url", "image_position"
+];
+
+function pickShopColumns(payload) {
+  const out = {};
+  for (const key of SHOP_WRITE_COLUMNS) {
+    if (key in payload && payload[key] !== undefined) out[key] = payload[key];
+  }
+  return out;
+}
+
+function withServiceIds(row) {
+  return { ...row, serviceIds: (row.shop_services ?? []).map((s) => s.service_id) };
+}
+
+function slugify(name) {
+  const base = String(name ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return base || "shop";
+}
+
+// All shops owned by this user (drafts/pending/approved/suspended — RLS scopes
+// the rows). `created_at` desc puts the most recent edits on top.
+export async function fetchOwnerShops(supabase, ownerId) {
+  const rows = unwrap(
+    await supabase
+      .from("shops")
+      .select("*, shop_services(service_id)")
+      .eq("owner_id", ownerId)
+      .order("created_at", { ascending: false })
+  );
+  return rows.map(withServiceIds);
+}
+
+export async function fetchOwnerShop(supabase, shopId) {
+  const row = unwrap(
+    await supabase
+      .from("shops")
+      .select("*, shop_services(service_id)")
+      .eq("id", shopId)
+      .single()
+  );
+  return withServiceIds(row);
+}
+
+// Create a shop. The `id` is a text PK with no DB default, so we generate a
+// slug + random suffix and retry on the rare collision. The row lands in
+// status='pending' (table default; status isn't grantable to clients), so we
+// immediately move it to 'draft' — a half-finished shop shouldn't sit in the
+// admin approval queue until the owner explicitly submits it.
+export async function createShop(supabase, ownerId, payload) {
+  const base = slugify(payload.name);
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const id = `${base}-${Math.random().toString(36).slice(2, 8)}`;
+    const { data, error } = await supabase
+      .from("shops")
+      .insert({ id, owner_id: ownerId, ...pickShopColumns(payload) })
+      .select("*, shop_services(service_id)")
+      .single();
+    if (!error) {
+      await supabase.rpc("set_shop_status", { p_shop_id: id, p_status: "draft" });
+      return withServiceIds({ ...data, status: "draft" });
+    }
+    if (error.code === "23505") {
+      lastError = error; // unique_violation on the generated id — try another
+      continue;
+    }
+    throw error;
+  }
+  throw lastError ?? new Error("Could not generate a unique shop id");
+}
+
+export async function updateShop(supabase, shopId, patch) {
+  const row = unwrap(
+    await supabase
+      .from("shops")
+      .update(pickShopColumns(patch))
+      .eq("id", shopId)
+      .select("*, shop_services(service_id)")
+      .single()
+  );
+  return withServiceIds(row);
+}
+
+// RLS only permits deleting non-approved shops; the UI hides delete on approved.
+export async function deleteShop(supabase, shopId) {
+  return unwrap(await supabase.from("shops").delete().eq("id", shopId));
+}
+
+// Owners may only pass 'draft' or 'pending'; admins set any status. The RPC
+// enforces this server-side.
+export async function setShopStatus(supabase, shopId, status) {
+  return unwrap(
+    await supabase.rpc("set_shop_status", { p_shop_id: shopId, p_status: status })
+  );
+}
+
+// Reconcile the shop_services join table to exactly `serviceIds`.
+export async function setShopServices(supabase, shopId, serviceIds) {
+  const current = unwrap(
+    await supabase.from("shop_services").select("service_id").eq("shop_id", shopId)
+  ).map((r) => r.service_id);
+  const next = new Set(serviceIds);
+  const toAdd = serviceIds.filter((id) => !current.includes(id));
+  const toRemove = current.filter((id) => !next.has(id));
+  if (toAdd.length) {
+    unwrap(
+      await supabase
+        .from("shop_services")
+        .insert(toAdd.map((service_id) => ({ shop_id: shopId, service_id })))
+    );
+  }
+  if (toRemove.length) {
+    unwrap(
+      await supabase
+        .from("shop_services")
+        .delete()
+        .eq("shop_id", shopId)
+        .in("service_id", toRemove)
+    );
+  }
+  return [...serviceIds];
+}
+
+// Upload a cover photo to the public shop-photos bucket under `<shopId>/...`
+// (RLS namespaces writes by shop id) and point image_url at it. Mirrors
+// uploadAvatar in AppContext.
+export async function uploadShopPhoto(supabase, shopId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${shopId}/cover.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from("shop-photos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (uploadError) throw uploadError;
+  const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
+  const url = `${pub.publicUrl}?t=${Date.now()}`;
+  return updateShop(supabase, shopId, { image_url: url });
+}
+
+// Bookings made at the owner's shops (read-only — RLS grants select, not write).
+// Customer identity isn't exposed (profiles RLS scopes to self), so we surface
+// only the schedule/services/status.
+export async function fetchOwnerBookings(supabase, shopIds) {
+  if (!shopIds?.length) return [];
+  const rows = unwrap(
+    await supabase
+      .from("bookings")
+      .select("*, booking_services(service_id), shops(name)")
+      .in("shop_id", shopIds)
+      .order("scheduled_date", { ascending: false })
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    shopId: row.shop_id,
+    shop: row.shops?.name ?? row.shop_id,
+    date: row.scheduled_date,
+    time: row.slot_time,
+    services: (row.booking_services ?? []).map((s) => s.service_id),
+    total: row.total ?? 0,
+    status: row.status ?? "upcoming"
+  }));
+}
+
+// ---- Admin moderation ------------------------------------------------------
+// Admins see every shop ("Admins can view all shops" RLS) and move status via
+// set_shop_status (the admin branch permits any transition). Owner identity
+// comes from a separate profiles read enabled by the admin profiles policy.
+
+// All shops, optionally filtered to one status. Each row carries serviceIds and
+// the owner's contact (email/name) for the review console.
+export async function fetchAdminShops(supabase, status) {
+  let query = supabase
+    .from("shops")
+    .select("*, shop_services(service_id)")
+    .order("updated_at", { ascending: false });
+  if (status) query = query.eq("status", status);
+  const rows = unwrap(await query).map(withServiceIds);
+
+  // Join the owners in a second read (admins can view all profiles).
+  const ownerIds = [...new Set(rows.map((r) => r.owner_id).filter(Boolean))];
+  let ownersById = {};
+  if (ownerIds.length) {
+    const owners = unwrap(
+      await supabase.from("profiles").select("id, email, full_name").in("id", ownerIds)
+    );
+    ownersById = Object.fromEntries(owners.map((o) => [o.id, o]));
+  }
+  return rows.map((row) => ({ ...row, owner: ownersById[row.owner_id] ?? null }));
+}
+
+// Counts per status for the admin dashboard badges.
+export async function fetchAdminShopCounts(supabase) {
+  const rows = unwrap(await supabase.from("shops").select("status"));
+  return rows.reduce((acc, r) => {
+    acc[r.status] = (acc[r.status] ?? 0) + 1;
+    return acc;
+  }, {});
+}

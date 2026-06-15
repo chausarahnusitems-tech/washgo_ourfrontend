@@ -15,6 +15,9 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // "customer" | "owner" — only used during signup. Owners get role='owner' via
+  // the signup_role metadata the handle_new_user trigger reads server-side.
+  const [accountType, setAccountType] = useState("customer");
   // null | "loading" | "check-email" | "reset-sent" | "exists" | error string
   const [status, setStatus] = useState(null);
 
@@ -67,7 +70,15 @@ export default function LoginPage() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: name.trim() }, emailRedirectTo: redirectTo }
+        options: {
+          data: {
+            full_name: name.trim(),
+            // Only stamp owner sign-ups; customers omit it (trigger defaults to
+            // 'customer'). Self-declared 'admin' is impossible by design.
+            ...(accountType === "owner" ? { signup_role: "owner" } : {})
+          },
+          emailRedirectTo: redirectTo
+        }
       });
       if (error) {
         // "User already registered" is returned when email confirmation is off.
@@ -233,6 +244,28 @@ export default function LoginPage() {
                 placeholder="Your name"
                 className={inputClass}
               />
+            )}
+            {isSignup && (
+              <div className="grid gap-1.5">
+                <span className="text-xs font-semibold text-neutral-500">I&apos;m signing up as a</span>
+                <div className="inline-flex w-full rounded-full bg-neutral-100 p-1 text-sm font-bold">
+                  {[
+                    ["customer", "Customer"],
+                    ["owner", "Shop owner"]
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setAccountType(value)}
+                      className={`flex-1 rounded-full py-2 transition ${
+                        accountType === value ? "bg-white text-ink shadow" : "text-neutral-500"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
             <input
               type="email"
