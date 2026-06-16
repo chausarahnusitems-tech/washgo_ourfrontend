@@ -47,6 +47,7 @@ export function adaptShop(row, origin = userLocation) {
   const km = haversineKm(origin, { lat: row.lat, lng: row.lng });
   return {
     id: row.id,
+    ownerId: row.owner_id ?? null,
     name: row.name,
     district: row.district ?? "",
     address: row.address ?? "",
@@ -62,7 +63,12 @@ export function adaptShop(row, origin = userLocation) {
     hours: row.hours ?? "",
     promo: row.promo ?? false,
     lat: row.lat,
-    lng: row.lng
+    lng: row.lng,
+    // Structured scheduling (Phase 5) — used to generate booking time slots.
+    openTime: row.open_time ?? null,
+    closeTime: row.close_time ?? null,
+    slotMinutes: row.slot_minutes ?? 60,
+    maxCarsPerSlot: row.max_cars_per_slot ?? 1
   };
 }
 

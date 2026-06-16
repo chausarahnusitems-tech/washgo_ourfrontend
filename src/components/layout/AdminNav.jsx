@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardCheck, LogOut, ShieldCheck, Store } from "lucide-react";
+import { ClipboardCheck, LogOut, MessageCircle, ShieldCheck, Store, UserCheck } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
@@ -11,7 +11,9 @@ import { useApp } from "../../lib/AppContext.jsx";
 // same shape as OwnerNav but for the moderation console.
 const NAV_ITEMS = [
   { key: "queue", label: "Approval queue", href: "/admin", icon: ClipboardCheck },
-  { key: "shops", label: "All shops", href: "/admin/shops", icon: Store }
+  { key: "shops", label: "All shops", href: "/admin/shops", icon: Store },
+  { key: "owners", label: "Owner applications", href: "/admin/owners", icon: UserCheck },
+  { key: "messages", label: "Messages", href: "/admin/messages", icon: MessageCircle }
 ];
 
 function isActive(pathname, href) {

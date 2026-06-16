@@ -112,9 +112,33 @@ export function InteractiveMap({
       : null;
     if (observer) observer.observe(containerRef.current);
 
+    // Markers are positioned from the map's measured geometry. On mobile the URL
+    // bar collapses as the page scrolls, which changes the visual viewport and
+    // shifts the container WITHOUT a size change the ResizeObserver would catch —
+    // so the pins visibly drift. Re-measure on scroll / viewport changes
+    // (rAF-throttled) to keep them pinned. Capture phase catches inner scrollers.
+    let scheduled = false;
+    const nudgeResize = () => {
+      if (scheduled) return;
+      scheduled = true;
+      window.requestAnimationFrame(() => {
+        scheduled = false;
+        if (mapRef.current) mapRef.current.resize();
+      });
+    };
+    window.addEventListener("scroll", nudgeResize, { passive: true, capture: true });
+    window.addEventListener("resize", nudgeResize, { passive: true });
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", nudgeResize, { passive: true });
+    vv?.addEventListener("scroll", nudgeResize, { passive: true });
+
     return () => {
       window.cancelAnimationFrame(raf);
       if (observer) observer.disconnect();
+      window.removeEventListener("scroll", nudgeResize, { capture: true });
+      window.removeEventListener("resize", nudgeResize);
+      vv?.removeEventListener("resize", nudgeResize);
+      vv?.removeEventListener("scroll", nudgeResize);
       map.remove();
       mapRef.current = null;
       markersRef.current = {};

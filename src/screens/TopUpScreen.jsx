@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useBackOr } from "../lib/useBackOr.js";
@@ -16,13 +16,16 @@ const presets = [50000, 100000, 200000, 500000, 1000000, 2000000];
 
 export function TopUpScreen() {
   const router = useRouter();
-  const { t, state, topUpFunds, requireAuth } = useApp();
+  const searchParams = useSearchParams();
+  const { t, state, requireAuth } = useApp();
   const [amount, setAmount] = useState(100000);
   const [custom, setCustom] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
 
-  const onBack = useBackOr("/account");
+  // Where to return after a successful top-up. Defaults to the account page, but
+  // the booking flow passes ?next=/shops/<id>/book so the user lands back on the
+  // booking they couldn't afford, ready to confirm.
+  const next = searchParams.get("next");
+  const onBack = useBackOr(next || "/account");
 
   const onCustom = (value) => {
     const digits = value.replace(/[^\d]/g, "");
@@ -38,21 +41,18 @@ export function TopUpScreen() {
   const valid = amount > 0;
   const newBalance = state.funds + (valid ? amount : 0);
 
-  const onAdd = async () => {
-    if (!valid || pending) return;
+  const onAdd = () => {
+    if (!valid) return;
     if (requireAuth) {
       router.push("/login");
       return;
     }
-    setError("");
-    setPending(true);
-    const ok = await topUpFunds(amount);
-    if (ok) {
-      router.push("/account");
-      return;
-    }
-    setPending(false);
-    setError("Top-up failed. Please try again.");
+    // Route through the placeholder payment page, which performs the top-up on
+    // success and then returns to `next` (the booking flow, or the account page).
+    const returnTo = next || "/account";
+    router.push(
+      `/payment?purpose=topup&amount=${amount}&next=${encodeURIComponent(returnTo)}`
+    );
   };
 
   return (
@@ -126,14 +126,9 @@ export function TopUpScreen() {
             <span className="text-neutral-500">{t("newBalance")}</span>
             <strong className="font-display text-lg font-black text-wash-500">{formatVnd(newBalance)}</strong>
           </div>
-          {error ? (
-            <p aria-live="polite" className="mb-3 text-sm font-bold text-wash-500">
-              {error}
-            </p>
-          ) : null}
-          <Button onClick={onAdd} disabled={!valid || pending} className="min-h-[54px] w-full rounded-full">
+          <Button onClick={onAdd} disabled={!valid} className="min-h-[54px] w-full rounded-full">
             <Icon name="Plus" className="h-5 w-5" />
-            {pending ? "..." : `${t("addFunds")} ${valid ? formatVnd(amount) : ""}`}
+            {`${t("addFunds")} ${valid ? formatVnd(amount) : ""}`}
           </Button>
         </div>
       </footer>

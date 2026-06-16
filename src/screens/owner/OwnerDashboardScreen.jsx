@@ -1,11 +1,15 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Store } from "lucide-react";
+import { CalendarClock, Coins, Plus, Store } from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { useOwnerShops } from "../../lib/owner/useOwnerShops.js";
+import { createClient } from "../../lib/supabase/client.js";
+import { fetchOwnerBookings } from "../../lib/data/api.js";
 import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
 import { Button } from "../../components/ui/Button.jsx";
+import { formatVnd } from "./format.js";
 
 const STATUS_ORDER = ["draft", "pending", "approved", "suspended"];
 const STATUS_LABELS = {
@@ -18,12 +22,36 @@ const STATUS_LABELS = {
 export function OwnerDashboardScreen() {
   const { auth } = useApp();
   const { shops, loading } = useOwnerShops();
+  const supabase = useMemo(() => createClient(), []);
   const name = auth.profile?.full_name || "there";
 
   const counts = STATUS_ORDER.reduce((acc, status) => {
     acc[status] = shops.filter((s) => s.status === status).length;
     return acc;
   }, {});
+
+  // Aggregate bookings across all the owner's shops for revenue + counts.
+  const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
+  const [bookings, setBookings] = useState([]);
+  useEffect(() => {
+    if (!supabase || shopIds.length === 0) {
+      setBookings([]);
+      return undefined;
+    }
+    let active = true;
+    fetchOwnerBookings(supabase, shopIds)
+      .then((rows) => active && setBookings(rows))
+      .catch((err) => console.error("[washgo] owner bookings failed", err));
+    return () => {
+      active = false;
+    };
+  }, [supabase, shopIds]);
+
+  // Revenue = total of every non-cancelled booking at the owner's shops.
+  const revenue = bookings
+    .filter((b) => b.status !== "cancelled")
+    .reduce((sum, b) => sum + (b.total ?? 0), 0);
+  const upcomingCount = bookings.filter((b) => b.status === "upcoming").length;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8 lg:px-10">
@@ -42,7 +70,32 @@ export function OwnerDashboardScreen() {
         </Link>
       </header>
 
-      <section className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Revenue + activity */}
+      <section className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-black/5 bg-gradient-to-br from-wash-500 to-wash-600 p-5 text-white">
+          <span className="flex items-center gap-1.5 text-sm text-white/90">
+            <Coins className="h-4 w-4" aria-hidden="true" />
+            Revenue earned
+          </span>
+          <p className="mt-2 font-display text-3xl font-black">{formatVnd(revenue)}</p>
+        </div>
+        <div className="rounded-2xl border border-black/5 bg-white p-5">
+          <span className="flex items-center gap-1.5 text-sm text-neutral-500">
+            <CalendarClock className="h-4 w-4" aria-hidden="true" />
+            Upcoming bookings
+          </span>
+          <p className="mt-2 font-display text-3xl font-black text-ink">{upcomingCount}</p>
+        </div>
+        <div className="rounded-2xl border border-black/5 bg-white p-5">
+          <span className="flex items-center gap-1.5 text-sm text-neutral-500">
+            <Store className="h-4 w-4" aria-hidden="true" />
+            Total bookings
+          </span>
+          <p className="mt-2 font-display text-3xl font-black text-ink">{bookings.length}</p>
+        </div>
+      </section>
+
+      <section className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {STATUS_ORDER.map((status) => (
           <div key={status} className="rounded-2xl border border-black/5 bg-white p-4">
             <p className="text-2xl font-black text-ink">{loading ? "–" : counts[status]}</p>

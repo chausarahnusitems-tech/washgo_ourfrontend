@@ -147,13 +147,13 @@ export function AdminShopReviewScreen({ shopId }) {
               variant="secondary"
               disabled={busy}
               onClick={() => {
-                if (window.confirm("Send this shop back to the owner as a draft?")) {
+                if (window.confirm("Reject this shop and send it back to the owner as a draft?")) {
                   act(() => sendBack(shop.id), { back: true });
                 }
               }}
             >
               <Undo2 className="h-4 w-4" aria-hidden="true" />
-              Send back to owner
+              Reject
             </Button>
           </>
         )}

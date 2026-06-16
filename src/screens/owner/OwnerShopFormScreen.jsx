@@ -3,32 +3,33 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, Send, Undo2 } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, MapPin, Send, Undo2 } from "lucide-react";
 import { userLocation } from "../../data/catalog.js";
-import { useApp } from "../../lib/AppContext.jsx";
 import { useOwnerShops } from "../../lib/owner/useOwnerShops.js";
 import { cx } from "../../lib/cx.js";
 import { Button } from "../../components/ui/Button.jsx";
 import { InteractiveMap } from "../../components/map/InteractiveMapDynamic.jsx";
+import { AddressSearch, timeOptions } from "../../components/owner/AddressSearch.jsx";
 import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
 import { OwnerShopServices } from "./OwnerShopServices.jsx";
 import { OwnerShopPhotos } from "./OwnerShopPhotos.jsx";
+import { OwnerShopSchedule } from "./OwnerShopSchedule.jsx";
 import { OwnerBookings } from "./OwnerBookings.jsx";
 
 const inputClass =
   "min-h-11 w-full rounded-2xl border border-black/10 px-4 text-sm outline-none focus:border-wash-500";
 const labelClass = "text-xs font-black uppercase tracking-wide text-neutral-500";
+const TIME_OPTIONS = timeOptions(30);
 
-const TABS = ["details", "photos", "services", "bookings"];
+const TABS = ["details", "photos", "services", "schedule", "bookings"];
 const TAB_LABELS = {
   details: "Details",
   photos: "Photos",
   services: "Services",
+  schedule: "Schedule",
   bookings: "Bookings"
 };
 
-// Shared create + edit screen. Without a shopId it's a create form (Details
-// only); with one it's a tabbed editor.
 export function OwnerShopFormScreen({ shopId }) {
   const router = useRouter();
   const owner = useOwnerShops();
@@ -70,7 +71,7 @@ export function OwnerShopFormScreen({ shopId }) {
 
       {isEdit && (
         <>
-          <StatusActions shop={shop} submit={owner.submit} />
+          <StatusActions shop={shop} submit={owner.submit} setPublished={owner.setPublished} />
           <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-black/10">
             {TABS.map((key) => (
               <button
@@ -113,6 +114,7 @@ export function OwnerShopFormScreen({ shopId }) {
         {isEdit && tab === "services" && (
           <OwnerShopServices shop={shop} saveServices={owner.saveServices} />
         )}
+        {isEdit && tab === "schedule" && <OwnerShopSchedule shop={shop} />}
         {isEdit && tab === "bookings" && <OwnerBookings shopId={shop.id} />}
       </div>
     </div>
@@ -127,18 +129,17 @@ function CenterNote({ children }) {
   );
 }
 
-// Draft → pending (submit) / pending → draft (withdraw) controls. Approved and
-// suspended shops have no owner-driven transition.
-function StatusActions({ shop, submit }) {
+// Status transitions + the "release publicly" switch.
+function StatusActions({ shop, submit, setPublished }) {
   const [busy, setBusy] = useState(false);
 
-  async function move(status) {
+  async function run(fn) {
     setBusy(true);
     try {
-      await submit(shop.id, status);
+      await fn();
     } catch (err) {
-      console.error("[washgo] status change failed", err);
-      window.alert(err?.message || "Could not change status.");
+      console.error("[washgo] status/publish change failed", err);
+      window.alert(err?.message || "Could not update. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -150,9 +151,9 @@ function StatusActions({ shop, submit }) {
         <p className="flex-1 text-sm text-amber-800">
           This shop is a draft and isn&apos;t visible to customers yet.
         </p>
-        <Button className="min-h-9 px-3 text-sm" disabled={busy} onClick={() => move("pending")}>
+        <Button className="min-h-9 px-3 text-sm" disabled={busy} onClick={() => run(() => submit(shop.id, "pending"))}>
           <Send className="h-4 w-4" aria-hidden="true" />
-          Submit
+          Submit for review
         </Button>
       </div>
     );
@@ -161,14 +162,9 @@ function StatusActions({ shop, submit }) {
     return (
       <div className="mt-4 flex items-center gap-3 rounded-2xl bg-amber-50 px-4 py-3">
         <p className="flex-1 text-sm text-amber-800">
-          Submitted for review. An admin will approve it before it goes live.
+          Submitted for review. An admin will approve it before you can release it.
         </p>
-        <Button
-          variant="secondary"
-          className="min-h-9 px-3 text-sm"
-          disabled={busy}
-          onClick={() => move("draft")}
-        >
+        <Button variant="secondary" className="min-h-9 px-3 text-sm" disabled={busy} onClick={() => run(() => submit(shop.id, "draft"))}>
           <Undo2 className="h-4 w-4" aria-hidden="true" />
           Withdraw
         </Button>
@@ -176,10 +172,32 @@ function StatusActions({ shop, submit }) {
     );
   }
   if (shop.status === "approved") {
+    const canPublish = (shop.serviceIds?.length ?? 0) > 0 && shop.address && shop.open_time && shop.close_time;
     return (
-      <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-        This shop is live and visible to customers.
-      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3">
+        <p className="flex-1 text-sm text-emerald-800">
+          Approved.{" "}
+          {shop.published
+            ? "Your shop is live and bookable."
+            : "Release it publicly when you're ready to take bookings."}
+        </p>
+        {shop.published ? (
+          <Button variant="secondary" className="min-h-9 px-3 text-sm" disabled={busy} onClick={() => run(() => setPublished(shop.id, false))}>
+            <EyeOff className="h-4 w-4" aria-hidden="true" />
+            Unpublish
+          </Button>
+        ) : (
+          <Button
+            className="min-h-9 px-3 text-sm"
+            disabled={busy || !canPublish}
+            title={canPublish ? undefined : "Add hours, address and at least one service first"}
+            onClick={() => run(() => setPublished(shop.id, true))}
+          >
+            <Eye className="h-4 w-4" aria-hidden="true" />
+            Release publicly
+          </Button>
+        )}
+      </div>
     );
   }
   return (
@@ -196,33 +214,36 @@ function ShopDetailsForm({ shop, onSave, submitLabel }) {
     address: shop?.address ?? "",
     phone: shop?.phone ?? "",
     starting_price: shop?.starting_price ?? "",
-    wait_minutes: shop?.wait_minutes ?? "",
-    hours: shop?.hours ?? "",
-    is_open: shop?.is_open ?? true,
-    promo: shop?.promo ?? false,
+    open_time: (shop?.open_time ?? "08:00").slice(0, 5),
+    close_time: (shop?.close_time ?? "18:00").slice(0, 5),
+    slot_minutes: shop?.slot_minutes ?? 60,
+    max_cars_per_slot: shop?.max_cars_per_slot ?? 1,
     lat: shop?.lat ?? null,
     lng: shop?.lng ?? null
   }));
-  const [status, setStatus] = useState(null); // null | "saving" | "saved" | error
+  const [status, setStatus] = useState(null);
 
   const set = (key) => (event) => {
-    const value =
-      event?.target?.type === "checkbox" ? event.target.checked : event.target.value;
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: event.target.value }));
     setStatus(null);
   };
 
   const pickLocation = (lat, lng) => {
+    setForm((prev) => ({ ...prev, lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) }));
+    setStatus(null);
+  };
+
+  const onAddress = ({ address, lat, lng }) => {
     setForm((prev) => ({
       ...prev,
-      lat: Number(lat.toFixed(6)),
-      lng: Number(lng.toFixed(6))
+      address,
+      lat: Number.isFinite(lat) ? Number(lat.toFixed(6)) : prev.lat,
+      lng: Number.isFinite(lng) ? Number(lng.toFixed(6)) : prev.lng
     }));
     setStatus(null);
   };
 
   const hasPoint = form.lat != null && form.lng != null;
-  // A single pin for the picked location, fed into the shared map's marker layer.
   const pins = useMemo(
     () => (hasPoint ? [{ id: "picked", lat: form.lat, lng: form.lng }] : []),
     [hasPoint, form.lat, form.lng]
@@ -230,22 +251,26 @@ function ShopDetailsForm({ shop, onSave, submitLabel }) {
 
   async function onSubmit(event) {
     event.preventDefault();
-    if (!form.name.trim()) {
-      setStatus("Please enter a shop name.");
-      return;
-    }
+    // Compulsory: name, contact, location, opening hours.
+    if (!form.name.trim()) return setStatus("Please enter a shop name.");
+    if (!form.phone.trim()) return setStatus("Please add a contact phone number.");
+    if (!form.address.trim()) return setStatus("Please add the shop address.");
+    if (!(form.close_time > form.open_time)) return setStatus("Closing time must be after opening time.");
+
     setStatus("saving");
     try {
       await onSave({
         name: form.name.trim(),
         district: form.district.trim() || null,
-        address: form.address.trim() || null,
-        phone: form.phone.trim() || null,
+        address: form.address.trim(),
+        phone: form.phone.trim(),
         starting_price: form.starting_price === "" ? 0 : Math.round(Number(form.starting_price)),
-        wait_minutes: form.wait_minutes === "" ? null : Math.round(Number(form.wait_minutes)),
-        hours: form.hours.trim() || null,
-        is_open: form.is_open,
-        promo: form.promo,
+        hours: `${form.open_time}–${form.close_time}`,
+        open_time: form.open_time,
+        close_time: form.close_time,
+        slot_minutes: Number(form.slot_minutes),
+        max_cars_per_slot: Math.max(1, Math.round(Number(form.max_cars_per_slot) || 1)),
+        is_open: true,
         lat: form.lat,
         lng: form.lng
       });
@@ -259,106 +284,72 @@ function ShopDetailsForm({ shop, onSave, submitLabel }) {
   return (
     <form onSubmit={onSubmit} className="grid gap-5">
       <div className="grid gap-1.5">
-        <label className={labelClass} htmlFor="shop-name">Shop name</label>
-        <input
-          id="shop-name"
-          required
-          value={form.name}
-          onChange={set("name")}
-          placeholder="Lotus Detail Studio"
-          className={inputClass}
-        />
+        <label className={labelClass} htmlFor="shop-name">Shop name *</label>
+        <input id="shop-name" required value={form.name} onChange={set("name")} placeholder="Lotus Detail Studio" className={inputClass} />
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="grid gap-1.5">
           <label className={labelClass} htmlFor="shop-district">District</label>
-          <input
-            id="shop-district"
-            value={form.district}
-            onChange={set("district")}
-            placeholder="District 7"
-            className={inputClass}
-          />
+          <input id="shop-district" value={form.district} onChange={set("district")} placeholder="District 7" className={inputClass} />
         </div>
         <div className="grid gap-1.5">
-          <label className={labelClass} htmlFor="shop-phone">Phone</label>
-          <input
-            id="shop-phone"
-            value={form.phone}
-            onChange={set("phone")}
-            placeholder="+84 ..."
-            className={inputClass}
-          />
+          <label className={labelClass} htmlFor="shop-phone">Contact phone *</label>
+          <input id="shop-phone" value={form.phone} onChange={set("phone")} placeholder="+84 ..." className={inputClass} />
         </div>
       </div>
 
       <div className="grid gap-1.5">
-        <label className={labelClass} htmlFor="shop-address">Address</label>
+        <label className={labelClass}>Address *</label>
+        <AddressSearch onSelect={onAddress} />
         <input
-          id="shop-address"
           value={form.address}
           onChange={set("address")}
-          placeholder="21 Nguyen Thi Thap, District 7, Ho Chi Minh City"
-          className={inputClass}
+          placeholder="Selected address appears here — or type it"
+          className={cx(inputClass, "mt-1")}
         />
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-1.5">
+          <label className={labelClass} htmlFor="shop-open">Opening time *</label>
+          <select id="shop-open" value={form.open_time} onChange={set("open_time")} className={inputClass}>
+            {TIME_OPTIONS.map((tm) => <option key={tm} value={tm}>{tm}</option>)}
+          </select>
+        </div>
+        <div className="grid gap-1.5">
+          <label className={labelClass} htmlFor="shop-close">Closing time *</label>
+          <select id="shop-close" value={form.close_time} onChange={set("close_time")} className={inputClass}>
+            {TIME_OPTIONS.map((tm) => <option key={tm} value={tm}>{tm}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-3">
         <div className="grid gap-1.5">
           <label className={labelClass} htmlFor="shop-price">Starting price (₫)</label>
-          <input
-            id="shop-price"
-            type="number"
-            min="0"
-            value={form.starting_price}
-            onChange={set("starting_price")}
-            placeholder="120000"
-            className={inputClass}
-          />
+          <input id="shop-price" type="number" min="0" step="1000" value={form.starting_price} onChange={set("starting_price")} placeholder="120000" className={inputClass} />
         </div>
         <div className="grid gap-1.5">
-          <label className={labelClass} htmlFor="shop-wait">Wait (min)</label>
-          <input
-            id="shop-wait"
-            type="number"
-            min="0"
-            value={form.wait_minutes}
-            onChange={set("wait_minutes")}
-            placeholder="12"
-            className={inputClass}
-          />
+          <label className={labelClass} htmlFor="shop-cap">Max cars / slot</label>
+          <input id="shop-cap" type="number" min="1" value={form.max_cars_per_slot} onChange={set("max_cars_per_slot")} className={inputClass} />
         </div>
         <div className="grid gap-1.5">
-          <label className={labelClass} htmlFor="shop-hours">Hours</label>
-          <input
-            id="shop-hours"
-            value={form.hours}
-            onChange={set("hours")}
-            placeholder="8:00 – 20:00"
-            className={inputClass}
-          />
+          <label className={labelClass} htmlFor="shop-slot">Slot length</label>
+          <select id="shop-slot" value={form.slot_minutes} onChange={set("slot_minutes")} className={inputClass}>
+            <option value={30}>30 min</option>
+            <option value={60}>60 min</option>
+            <option value={90}>90 min</option>
+            <option value={120}>120 min</option>
+          </select>
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-6">
-        <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <input type="checkbox" checked={form.is_open} onChange={set("is_open")} className="h-4 w-4" />
-          Open for bookings
-        </label>
-        <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <input type="checkbox" checked={form.promo} onChange={set("promo")} className="h-4 w-4" />
-          Show promo badge
-        </label>
       </div>
 
       <div className="grid gap-2">
-        <span className={labelClass}>Location</span>
+        <span className={labelClass}>Location pin</span>
         <p className="flex items-center gap-1.5 text-xs text-neutral-500">
           <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-          {hasPoint
-            ? `${form.lat}, ${form.lng} — tap the map to adjust`
-            : "Tap the map to drop a pin at your shop."}
+          {hasPoint ? `${form.lat}, ${form.lng} — tap the map to adjust` : "Search an address above or tap the map to drop a pin."}
         </p>
         <InteractiveMap
           shops={pins}
@@ -374,9 +365,7 @@ function ShopDetailsForm({ shop, onSave, submitLabel }) {
         <Button type="submit" disabled={status === "saving"}>
           {status === "saving" ? "Saving…" : submitLabel}
         </Button>
-        {status === "saved" && (
-          <span className="text-sm font-semibold text-emerald-600">Saved</span>
-        )}
+        {status === "saved" && <span className="text-sm font-semibold text-emerald-600">Saved</span>}
         {status && !["saving", "saved"].includes(status) && (
           <span className="text-sm text-red-600">{status}</span>
         )}

@@ -6,9 +6,9 @@ import { formatIsoLabel } from "./calendar.js";
 // now lives in the URL — only domain/session state remains here.
 export const initialState = {
   lang: "en",
-  // Membership tier. Unlocks perks + a checkout discount; it no longer funds the
-  // wallet (the cash wallet is topped up separately).
-  selectedPlan: "premium",
+  // Membership tier. 'basic' is the non-member default; joining the paid
+  // membership upgrades to 'premium' (10% checkout discount + perks).
+  selectedPlan: "basic",
   // Cash wallet balance in VND. This is the *spendable* balance: the two seeded
   // upcoming bookings below (90.000 + 144.000 = 234.000) are treated as already
   // paid from a 500.000 top-up, leaving 266.000 — so cancelling them refunds
@@ -160,6 +160,27 @@ export function getVisibleShops(search, serviceId = null) {
 
 export function toggleItem(items, item) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
+}
+
+// Generate "HH:MM" booking slot labels from a shop's structured hours, stepping
+// by slotMinutes from open (inclusive) to close (the last slot starts at most
+// one step before close). Returns null when hours aren't set, so callers fall
+// back to the legacy fixed slot list (src/data/catalog.js `times`).
+export function generateSlots(openTime, closeTime, slotMinutes = 60) {
+  if (!openTime || !closeTime) return null;
+  const toMin = (value) => {
+    const [h, m] = String(value).split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const start = toMin(openTime);
+  const end = toMin(closeTime);
+  const step = Math.max(15, slotMinutes || 60);
+  if (!(end > start)) return null;
+  const out = [];
+  for (let m = start; m + step <= end; m += step) {
+    out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+  }
+  return out.length ? out : null;
 }
 
 // Bookings without an explicit status are treated as upcoming (covers older
