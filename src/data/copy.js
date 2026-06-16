@@ -239,7 +239,42 @@ export const copy = {
     chatAutoReply: "Thanks for your message! Our team will get back to you shortly.",
     chatInputPlaceholder: "Type a message",
     chatSend: "Send",
-    chatDemoNote: "Demo chat — messages aren't sent yet."
+    chatDemoNote: "Demo chat — messages aren't sent yet.",
+    // Support inbox: requester role labels
+    roleCustomer: "Customer",
+    roleOwner: "Owner",
+    roleAdmin: "Admin",
+    // Problem tags (support triage)
+    chooseProblemTags: "What's this about?",
+    startSupport: "Start chat",
+    tagServiceQuality: "Poor Service Quality",
+    tagUnprofessional: "Unprofessional Staff",
+    tagVehicleDamage: "Vehicle Damage",
+    tagLateOrNoshow: "Late / No-show",
+    tagBilling: "Billing / Payment Issue",
+    tagRefund: "Refund Request",
+    tagBooking: "Booking Problem",
+    tagAppBug: "App Bug / Technical Issue",
+    tagAccount: "Account Access",
+    tagMembership: "Membership / Plan Issue",
+    tagRewards: "Voucher / Rewards Issue",
+    tagOther: "Other",
+    // Close chat
+    closeChat: "Close chat",
+    chatClosed: "This conversation is closed.",
+    confirmCloseChat: "Close this conversation? It can't be reopened and no new messages can be sent.",
+    // Post-close review
+    rateExperience: "How was your support experience?",
+    reviewComment: "Add a comment (optional)",
+    submitReview: "Submit review",
+    reviewThanks: "Thanks for your feedback!",
+    // Attachments
+    attach: "Attach photo or video",
+    uploading: "Uploading…",
+    videoTooLarge: "That video is too large (max 50MB).",
+    // Live view (coming soon)
+    watchLive: "Watch live",
+    liveComingSoon: "Live view is coming soon — you'll be able to watch your wash in real time."
   },
   vi: {
     signInToContinue: "Đăng nhập để tiếp tục",
@@ -481,6 +516,41 @@ export const copy = {
     chatAutoReply: "Cảm ơn tin nhắn của bạn! Đội ngũ của chúng tôi sẽ phản hồi sớm.",
     chatInputPlaceholder: "Nhập tin nhắn",
     chatSend: "Gửi",
-    chatDemoNote: "Trò chuyện thử nghiệm — tin nhắn chưa được gửi."
+    chatDemoNote: "Trò chuyện thử nghiệm — tin nhắn chưa được gửi.",
+    // Support inbox: requester role labels
+    roleCustomer: "Khách hàng",
+    roleOwner: "Chủ tiệm",
+    roleAdmin: "Quản trị viên",
+    // Problem tags (support triage)
+    chooseProblemTags: "Bạn cần hỗ trợ về vấn đề gì?",
+    startSupport: "Bắt đầu trò chuyện",
+    tagServiceQuality: "Chất lượng dịch vụ kém",
+    tagUnprofessional: "Nhân viên thiếu chuyên nghiệp",
+    tagVehicleDamage: "Hư hỏng xe",
+    tagLateOrNoshow: "Trễ hẹn / Không đến",
+    tagBilling: "Vấn đề thanh toán",
+    tagRefund: "Yêu cầu hoàn tiền",
+    tagBooking: "Sự cố đặt lịch",
+    tagAppBug: "Lỗi ứng dụng",
+    tagAccount: "Truy cập tài khoản",
+    tagMembership: "Vấn đề gói thành viên",
+    tagRewards: "Vấn đề voucher / điểm thưởng",
+    tagOther: "Khác",
+    // Close chat
+    closeChat: "Đóng cuộc trò chuyện",
+    chatClosed: "Cuộc trò chuyện này đã đóng.",
+    confirmCloseChat: "Đóng cuộc trò chuyện này? Không thể mở lại và không thể gửi tin nhắn mới.",
+    // Post-close review
+    rateExperience: "Bạn đánh giá trải nghiệm hỗ trợ thế nào?",
+    reviewComment: "Thêm nhận xét (không bắt buộc)",
+    submitReview: "Gửi đánh giá",
+    reviewThanks: "Cảm ơn phản hồi của bạn!",
+    // Attachments
+    attach: "Đính kèm ảnh hoặc video",
+    uploading: "Đang tải lên…",
+    videoTooLarge: "Video quá lớn (tối đa 50MB).",
+    // Live view (coming soon)
+    watchLive: "Xem trực tiếp",
+    liveComingSoon: "Tính năng xem trực tiếp sắp ra mắt — bạn sẽ có thể theo dõi quá trình rửa xe theo thời gian thực."
   }
 };

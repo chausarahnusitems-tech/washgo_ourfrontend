@@ -553,9 +553,16 @@ export async function fetchSlotAvailability(supabase, shopId, date) {
 // ---- Chat (customer / owner / admin) --------------------------------------
 
 // Find-or-create a thread (kind 'shop' needs a shopId; 'support' doesn't).
-export async function openConversation(supabase, kind, shopId = null) {
+// `tags` are the predefined problem-tag slugs to stamp on a NEW support thread
+// (ignored when an existing thread is found). Always sent so PostgREST resolves
+// the 3-arg open_conversation.
+export async function openConversation(supabase, kind, shopId = null, tags = []) {
   return unwrap(
-    await supabase.rpc("open_conversation", { p_kind: kind, p_shop_id: shopId })
+    await supabase.rpc("open_conversation", {
+      p_kind: kind,
+      p_shop_id: shopId,
+      p_tags: tags
+    })
   );
 }
 
@@ -582,7 +589,7 @@ export async function fetchConversations(supabase, kind = null) {
   let byId = {};
   if (creatorIds.length) {
     const people = unwrap(
-      await supabase.from("profiles").select("id, full_name, email").in("id", creatorIds)
+      await supabase.from("profiles").select("id, full_name, email, role").in("id", creatorIds)
     );
     byId = Object.fromEntries(people.map((p) => [p.id, p]));
   }
@@ -595,6 +602,12 @@ export async function fetchConversations(supabase, kind = null) {
     createdBy: r.created_by ?? null,
     creatorName: byId[r.created_by]?.full_name ?? null,
     creatorEmail: byId[r.created_by]?.email ?? null,
+    // Requester role lets the support inbox label a thread "Name · Customer/Owner".
+    creatorRole: byId[r.created_by]?.role ?? null,
+    status: r.status ?? "open",
+    closedAt: r.closed_at ?? null,
+    closedBy: r.closed_by ?? null,
+    problemTags: r.problem_tags ?? [],
     createdAt: r.created_at
   }));
 }
@@ -603,18 +616,80 @@ export async function fetchMessages(supabase, conversationId) {
   return unwrap(
     await supabase
       .from("messages")
-      .select("id, sender_id, body, created_at")
+      .select("id, sender_id, body, attachment_url, attachment_type, created_at")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
   );
 }
 
-export async function sendMessage(supabase, conversationId, senderId, body) {
+// Send a text and/or attachment message. `attachment` is { url, type } | null;
+// body coalesces to '' so an attachment-only message still satisfies the
+// NOT NULL body column.
+export async function sendMessage(supabase, conversationId, senderId, body, attachment = null) {
   return unwrap(
     await supabase
       .from("messages")
-      .insert({ conversation_id: conversationId, sender_id: senderId, body })
-      .select("id, sender_id, body, created_at")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: senderId,
+        body: body ?? "",
+        attachment_url: attachment?.url ?? null,
+        attachment_type: attachment?.type ?? null
+      })
+      .select("id, sender_id, body, attachment_url, attachment_type, created_at")
       .single()
   );
+}
+
+// Upload a chat attachment to the public 'chat-attachments' bucket under
+// <conversationId>/<uid>/<file> (the storage RLS keys off those path segments).
+// Returns { url, type } ready to pass to sendMessage. A timestamped filename
+// keeps each upload distinct (no upsert overwrite).
+export async function uploadChatAttachment(supabase, conversationId, uid, file) {
+  const safeName = (file.name || "file").replace(/[^\w.\-]/g, "_");
+  const path = `${conversationId}/${uid}/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage
+    .from("chat-attachments")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+  return {
+    url: `${pub.publicUrl}?t=${Date.now()}`,
+    type: (file.type || "").startsWith("video/") ? "video" : "image"
+  };
+}
+
+// Close a thread (requester, shop owner participant, or admin). Idempotent.
+export async function closeConversation(supabase, conversationId) {
+  return unwrap(
+    await supabase.rpc("close_conversation", { p_conv: conversationId })
+  );
+}
+
+// Upsert the caller's review of a (closed) conversation. RLS enforces non-admin
+// participant + closed thread + self.
+export async function submitConversationReview(supabase, conversationId, userId, rating, comment) {
+  return unwrap(
+    await supabase
+      .from("conversation_reviews")
+      .upsert(
+        { conversation_id: conversationId, user_id: userId, rating, comment: comment || null },
+        { onConflict: "conversation_id,user_id" }
+      )
+      .select("id, rating, comment, created_at")
+      .single()
+  );
+}
+
+// The caller's existing review for a thread (to prefill / avoid re-prompting),
+// or null if they haven't reviewed yet.
+export async function fetchConversationReview(supabase, conversationId, userId) {
+  const { data, error } = await supabase
+    .from("conversation_reviews")
+    .select("id, rating, comment, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
 }
