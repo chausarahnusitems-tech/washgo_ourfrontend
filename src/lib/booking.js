@@ -1,6 +1,6 @@
 import { dates } from "../data/catalog.js";
 import { getCatalog } from "./catalog-store.js";
-import { formatIsoLabel } from "./calendar.js";
+import { formatIsoLabel, parseIsoDate, resolveBookingIso } from "./calendar.js";
 
 // Navigation state (screen, selectedShop, mapShop, quickShop, search, prevScreen)
 // now lives in the URL — only domain/session state remains here.
@@ -183,10 +183,59 @@ export function generateSlots(openTime, closeTime, slotMinutes = 60) {
   return out.length ? out : null;
 }
 
-// Bookings without an explicit status are treated as upcoming (covers older
-// persisted state that predates the status field).
+// Parse a stored slot label into 24h {hours, minutes}. Handles both the legacy
+// 12h dotted format ("10.00AM", "12.30PM", "2.00PM") and the structured 24h
+// format from generateSlots ("10:00", "14:30"). Returns null when unparseable.
+function parseSlotTime(time) {
+  if (typeof time !== "string") return null;
+  const match = /^\s*(\d{1,2})[:.](\d{2})\s*([AaPp][Mm])?\s*$/.exec(time);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3]?.toUpperCase();
+  if (meridiem === "AM") {
+    if (hours === 12) hours = 0;
+  } else if (meridiem === "PM") {
+    if (hours !== 12) hours += 12;
+  }
+  if (hours > 23 || minutes > 59) return null;
+  return { hours, minutes };
+}
+
+// The absolute local Date a booking is scheduled for, derived from its dateId
+// (ISO date, or a legacy quick-pick id resolved against the real calendar) plus
+// its slot time. Returns null when the date can't be resolved. A booking with no
+// parseable time falls back to end-of-day so a same-day slot isn't flagged
+// elapsed before the day is actually over.
+export function getBookingDateTime(booking) {
+  if (!booking) return null;
+  const day = parseIsoDate(resolveBookingIso(booking.dateId));
+  if (!day) return null;
+  const slot = parseSlotTime(booking.time);
+  return new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+    slot ? slot.hours : 23,
+    slot ? slot.minutes : 59
+  );
+}
+
+// True once a booking's scheduled slot is in the past.
+export function isBookingElapsed(booking) {
+  const when = getBookingDateTime(booking);
+  return Boolean(when && when.getTime() < Date.now());
+}
+
+// Effective status. Cancelled/completed are terminal and kept as recorded; an
+// "upcoming" booking whose slot has already passed is treated as completed so it
+// moves out of the upcoming list and into history automatically (no background
+// job needed). Bookings without an explicit status default to upcoming (covers
+// older persisted state that predates the status field).
 export function getBookingStatus(booking) {
-  return booking?.status ?? "upcoming";
+  const stored = booking?.status ?? "upcoming";
+  if (stored !== "upcoming") return stored;
+  return isBookingElapsed(booking) ? "completed" : "upcoming";
 }
 
 export function getUpcomingBookings(bookings) {
@@ -195,6 +244,20 @@ export function getUpcomingBookings(bookings) {
 
 export function getHistoryBookings(bookings) {
   return (bookings ?? []).filter((booking) => getBookingStatus(booking) !== "upcoming");
+}
+
+// The most recent past booking, for the home "Previous Booking" card. Real
+// completed washes rank above cancelled ones; ties break on the most recent
+// scheduled datetime. Returns null when there's no history yet.
+export function getPreviousBooking(bookings) {
+  const ranked = getHistoryBookings(bookings)
+    .map((booking) => ({
+      booking,
+      when: getBookingDateTime(booking)?.getTime() ?? 0,
+      done: getBookingStatus(booking) === "completed" ? 1 : 0
+    }))
+    .sort((a, b) => b.done - a.done || b.when - a.when);
+  return ranked[0]?.booking ?? null;
 }
 
 export function getBookingById(bookings, id) {
