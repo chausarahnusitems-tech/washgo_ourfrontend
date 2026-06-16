@@ -76,33 +76,4 @@ export function buildMonthGrid(year, month) {
   return cells;
 }
 
-// Resolve a UI date id to a concrete ISO date for the backend. ISO ids pass
-// through; the legacy quick-pick ids ("today"/"tomorrow"/"sat"/"sun") resolve
-// against the real calendar so a booking always lands on an actual upcoming day.
-export function resolveBookingIso(id) {
-  const iso = parseIsoDate(id);
-  if (iso) return toIsoDate(iso);
-  const base = startOfToday();
-  const plusDays = (n) => {
-    const d = new Date(base);
-    d.setDate(d.getDate() + n);
-    return d;
-  };
-  const nextWeekday = (weekday) => {
-    const diff = (weekday - base.getDay() + 7) % 7 || 7; // strictly the next one
-    return plusDays(diff);
-  };
-  switch (id) {
-    case "tomorrow":
-      return toIsoDate(plusDays(1));
-    case "sat":
-      return toIsoDate(nextWeekday(6));
-    case "sun":
-      return toIsoDate(nextWeekday(0));
-    case "today":
-    default:
-      return toIsoDate(base);
-  }
-}
-
 export { WEEKDAYS_SHORT };

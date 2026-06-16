@@ -102,6 +102,7 @@ export function TopNav({ className }) {
               <span className="hidden max-w-[160px] text-left leading-tight sm:block">
                 <span className="block truncate text-sm font-black text-ink">{displayName}</span>
               </span>
+              <Icon name="ChevronDown" className="h-4 w-4 text-neutral-500" />
             </Link>
           ) : (
             <Link

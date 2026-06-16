@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
 import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
-import { createClient } from "../lib/supabase/client.js";
-import { openConversation } from "../lib/data/api.js";
 import { Icon } from "./ui/Icon.jsx";
 import { Button, IconButton } from "./ui/Button.jsx";
 import { cx } from "../lib/cx.js";
@@ -37,37 +34,13 @@ function ServiceChips({ shop, t }) {
  * returns to the list, `onClose` (desktop) dismisses the card.
  */
 export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "desktop", className }) {
-  const router = useRouter();
-  const { state, toggleFavorite, requireAuth, mode } = useApp();
+  const { state, toggleFavorite } = useApp();
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   if (!shop) return null;
 
-  // Open (or resume) a chat thread with this shop's owner.
-  const onMessageShop = async () => {
-    if (requireAuth) {
-      router.push("/login");
-      return;
-    }
-    try {
-      const supabase = createClient();
-      const id = await openConversation(supabase, "shop", shop.id);
-      router.push(`/chat?c=${id}`);
-    } catch (err) {
-      console.error("[washgo] open shop chat failed", err);
-    }
-  };
-
   const isMobile = variant === "mobile";
   const isFav = (state.favorites ?? []).includes(shop.id);
-
-  const onToggleFav = () => {
-    if (requireAuth) {
-      router.push("/login");
-      return;
-    }
-    toggleFavorite(shop.id);
-  };
 
   // Share via the Web Share API where available, falling back to copying the
   // link to the clipboard (with a brief "Link copied" confirmation). No backend.
@@ -108,7 +81,7 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
             <IconButton
               label={isFav ? t("saved") : t("save")}
               aria-pressed={isFav}
-              onClick={onToggleFav}
+              onClick={() => toggleFavorite(shop.id)}
               className="h-9 w-9 bg-neutral-100"
             >
               <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />
@@ -144,38 +117,6 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           {shop.district ? `${shop.district} · ${shop.address}` : shop.address}
         </p>
 
-        {/* Hand off to the device's maps app for turn-by-turn directions. Prefer
-            the precise lat/lng pin; fall back to a text address query. */}
-        <button
-          type="button"
-          onClick={() => {
-            const dest =
-              shop.lat != null && shop.lng != null
-                ? `${shop.lat},${shop.lng}`
-                : encodeURIComponent([shop.name, shop.address].filter(Boolean).join(", "));
-            window.open(
-              `https://www.google.com/maps/dir/?api=1&destination=${dest}`,
-              "_blank",
-              "noopener,noreferrer"
-            );
-          }}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-wash-50 px-3 py-1.5 text-sm font-bold text-wash-600 transition hover:bg-wash-100"
-        >
-          <Icon name="LocateFixed" className="h-4 w-4" />
-          {t("getDirections")}
-        </button>
-
-        {mode === "backend" && shop.ownerId ? (
-          <button
-            type="button"
-            onClick={onMessageShop}
-            className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1.5 text-sm font-bold text-ink transition hover:bg-neutral-200"
-          >
-            <Icon name="MessageCircle" className="h-4 w-4" />
-            {t("messageShop")}
-          </button>
-        ) : null}
-
         <img
           src={images.hero}
           alt={shop.name}
@@ -200,10 +141,10 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
               </dd>
             </div>
             <div className="rounded-xl bg-neutral-100 px-3 py-2">
-              <dt className="text-[0.7rem] text-neutral-500">{t("startingAt")}</dt>
+              <dt className="text-[0.7rem] text-neutral-500">{t("waitTime")}</dt>
               <dd className="flex items-center gap-1 font-bold text-wash-500">
-                <Icon name="Star" className="h-3.5 w-3.5" />
-                {formatVnd(shop.starting)}
+                <Icon name="Clock" className="h-3.5 w-3.5" />
+                {shop.wait}
               </dd>
             </div>
           </dl>

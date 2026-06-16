@@ -1,22 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { times } from "../data/catalog.js";
+import { services, times } from "../data/catalog.js";
 import {
   formatVnd,
-  generateSlots,
   getDiscount,
   getSelectedDateLabel,
   getSelectedServices,
+  getShopById,
   getSubtotal,
   getTotal
 } from "../lib/booking.js";
-import { addMonths, buildMonthGrid, formatMonthLabel, resolveBookingIso, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
+import { addMonths, buildMonthGrid, formatMonthLabel, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
 import { useApp } from "../lib/AppContext.jsx";
-import { createClient } from "../lib/supabase/client.js";
-import { fetchSlotAvailability } from "../lib/data/api.js";
 import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -25,8 +23,7 @@ import { TopBar } from "../components/layout/TopBar.jsx";
 export function BookingScreen({ shopId }) {
   const router = useRouter();
   const onBack = useBackOr("/explore");
-  const supabase = useMemo(() => createClient(), []);
-  const { t, state, catalog, mode, requireAuth, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
+  const { t, state, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
 
   // Calendar is generated from the real current month so the arrows navigate and
   // the grid never goes stale.
@@ -34,40 +31,8 @@ export function BookingScreen({ shopId }) {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  // Guard against double-submission: a second click while the first
-  // confirmBooking() is still in flight would create a duplicate booking.
-  const [submitting, setSubmitting] = useState(false);
-  const [bookError, setBookError] = useState(null);
-  // Per-slot availability for the picked date (counts + cap + closed-day flag).
-  const [availability, setAvailability] = useState(null);
 
-  // Resolve from the same live catalog the rest of the screen reads, so a valid
-  // DB shop isn't briefly mistaken for not-found on a deep link.
-  const shop = (catalog.shops ?? []).find((s) => s.id === shopId) ?? null;
-
-  // Time slots: generated from the shop's structured hours when set, else the
-  // legacy fixed list (demo / not-yet-configured shops).
-  const slots = useMemo(
-    () => generateSlots(shop?.openTime, shop?.closeTime, shop?.slotMinutes) ?? times,
-    [shop?.openTime, shop?.closeTime, shop?.slotMinutes]
-  );
-
-  // Load availability for the selected date (backend only). Lets us grey out
-  // full or closed slots before the server rejects them.
-  const isoDate = resolveBookingIso(state.selectedDate);
-  useEffect(() => {
-    if (mode !== "backend" || !supabase || !shop?.id || !isoDate) {
-      setAvailability(null);
-      return undefined;
-    }
-    let active = true;
-    fetchSlotAvailability(supabase, shop.id, isoDate)
-      .then((res) => active && setAvailability(res))
-      .catch(() => active && setAvailability(null));
-    return () => {
-      active = false;
-    };
-  }, [mode, supabase, shop?.id, isoDate]);
+  const shop = getShopById(shopId);
 
   // A typo'd / stale deep link (e.g. /shops/unknown/book) shouldn't silently
   // book under the first shop — show a not-found placeholder instead.
@@ -91,21 +56,8 @@ export function BookingScreen({ shopId }) {
     );
   }
 
-  const onConfirm = async () => {
-    if (submitting) return;
-    if (requireAuth) {
-      router.push("/login");
-      return;
-    }
-    setSubmitting(true);
-    setBookError(null);
-    const ok = await confirmBooking(shop.id);
-    if (ok) {
-      router.push("/confirmation");
-      return; // leave the button disabled while we navigate away
-    }
-    setBookError(t("bookingFailed"));
-    setSubmitting(false); // re-enable only if the booking failed
+  const onConfirm = () => {
+    if (confirmBooking(shop.id)) router.push("/confirmation");
   };
 
   const selectedServices = getSelectedServices(state.selectedServices);
@@ -197,43 +149,27 @@ export function BookingScreen({ shopId }) {
 
         <section className="mt-3 rounded-xl border border-black/20 bg-white p-3">
           <h2 className="font-display text-base font-black">{t("selectTime")}</h2>
-          {availability?.closed ? (
-            <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-500">
-              {t("closedOnDate")}
-            </p>
-          ) : (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {slots.map((time) => {
-                const count = availability?.counts?.[time] ?? 0;
-                const full = availability ? count >= availability.cap : false;
-                const selected = state.selectedTime === time;
-                return (
-                  <button
-                    key={time}
-                    type="button"
-                    disabled={full}
-                    onClick={() => onTime(time)}
-                    className={`min-h-11 rounded-md border text-sm font-black ${
-                      selected
-                        ? "border-wash-500 bg-wash-500 text-white"
-                        : full
-                          ? "border-black/10 bg-neutral-100 text-neutral-300 line-through"
-                          : "border-black/20 bg-white"
-                    }`}
-                  >
-                    {time}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {times.map((time) => (
+              <button
+                key={time}
+                type="button"
+                onClick={() => onTime(time)}
+                className={`min-h-11 rounded-md border text-sm font-black ${
+                  state.selectedTime === time ? "border-wash-500 bg-wash-500 text-white" : "border-black/20 bg-white"
+                }`}
+              >
+                {time}
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="mt-3 rounded-xl border border-black/20 bg-white p-3">
           <h2 className="font-display text-base font-black">{t("chooseServices")}</h2>
           <p className="mt-1 text-xs text-neutral-500">{t("serviceHint")}</p>
           <div className="mt-3 grid gap-2">
-            {catalog.services.map((service) => {
+            {services.map((service) => {
               const selected = state.selectedServices.includes(service.id);
               return (
                 <button
@@ -335,7 +271,7 @@ export function BookingScreen({ shopId }) {
         {insufficient ? (
           <button
             type="button"
-            onClick={() => router.push(`/topup?next=${encodeURIComponent(`/shops/${shop.id}/book`)}`)}
+            onClick={() => router.push("/topup")}
             className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl border border-wash-300 bg-wash-50 px-4 py-3 text-left text-sm font-bold text-wash-600"
           >
             <span className="inline-flex items-center gap-2">
@@ -349,15 +285,9 @@ export function BookingScreen({ shopId }) {
           </button>
         ) : null}
 
-        {bookError ? (
-          <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
-            {bookError}
-          </p>
-        ) : null}
-
         {/* Book button lives in the scroll flow (not a pinned footer) with
             bottom padding below, so it reads as the end of the form. */}
-        <Button onClick={onConfirm} disabled={!total || insufficient || submitting} className="mt-5 min-h-[54px] w-full rounded-full px-4">
+        <Button onClick={onConfirm} disabled={!total || insufficient} className="mt-5 min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
             <strong>{t("book")}</strong>

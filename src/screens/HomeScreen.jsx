@@ -2,7 +2,7 @@
 
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
-import { formatVnd, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
+import { DEFAULT_SHOP_ID, formatVnd, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -33,18 +33,13 @@ export function HomeScreen() {
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
     onShop: (id) => router.push(`/explore?shop=${id}`),
+    onQuickView: (id) => setParams({ quick: id }, { replace: false }),
     onExplore: () => router.push("/explore"),
     onService: (serviceId) => {
       const seed = serviceCatalog.some((service) => service.id === serviceId) ? serviceId : "";
       router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
     },
-    // Book a wash = browse and choose a shop. Rebook = repeat the most recent
-    // booking's shop (fall back to browse when there's no history).
-    onBook: () => router.push("/explore"),
-    onRebook: () => {
-      const lastShopId = state.bookings?.[0]?.shopId;
-      router.push(lastShopId ? `/shops/${lastShopId}/book` : "/explore");
-    },
+    onBook: () => router.push(`/shops/${DEFAULT_SHOP_ID}/book`),
     onBookings: () => router.push("/bookings"),
     onTopUp: () => router.push("/topup")
   };
@@ -58,7 +53,7 @@ export function HomeScreen() {
 /* ------------------------------------------------------------------ */
 /* Mobile (original single-column marketplace)                         */
 /* ------------------------------------------------------------------ */
-function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onService, onTopUp }) {
+function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService, onTopUp }) {
   const visibleShops = getVisibleShops(state.search);
 
   return (
@@ -113,7 +108,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
       <div className="mt-3 grid gap-3">
         {visibleShops.length ? (
           visibleShops.map((shop) => (
-            <ShopCard key={shop.id} shop={shop} t={t} onSelect={onShop} />
+            <ShopCard key={shop.id} shop={shop} t={t} onSelect={onShop} onQuickView={onQuickView} />
           ))
         ) : (
           <div className="rounded-[18px] border border-black/10 bg-white p-7 text-center text-sm text-neutral-500">{t("noResults")}</div>
@@ -157,7 +152,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebook, onBookings }) {
+function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBookings }) {
   const nearbyShops = getVisibleShops("");
   // Surface the user's actual next upcoming booking (seeded list), not a fake.
   const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
@@ -219,7 +214,7 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebook,
                 <Icon name="Car" className="h-5 w-5" />
                 {t("bookWash")}
               </Button>
-              <Button variant="secondary" onClick={onRebook} disabled={!state.bookings?.length}>
+              <Button variant="secondary" onClick={onBook}>
                 <Icon name="RotateCcw" className="h-5 w-5" />
                 {t("rebook")}
               </Button>

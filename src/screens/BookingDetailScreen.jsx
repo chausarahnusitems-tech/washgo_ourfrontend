@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { dates, times } from "../data/catalog.js";
+import { dates, services as serviceCatalog, times } from "../data/catalog.js";
 import {
   formatVnd,
   getBookingById,
@@ -28,7 +28,7 @@ const statusTones = {
 
 export function BookingDetailScreen({ bookingId }) {
   const router = useRouter();
-  const { t, state, catalog, requireAuth, updateBooking, cancelBooking, deleteBooking } = useApp();
+  const { t, state, updateBooking, cancelBooking, deleteBooking } = useApp();
   const booking = getBookingById(state.bookings, bookingId);
 
   const [editing, setEditing] = useState(false);
@@ -88,31 +88,19 @@ export function BookingDetailScreen({ bookingId }) {
       services: d.services.includes(id) ? d.services.filter((s) => s !== id) : [...d.services, id]
     }));
 
-  const saveEdit = async () => {
+  const saveEdit = () => {
     if (!canSave) return;
-    if (requireAuth) {
-      router.push("/login");
-      return;
-    }
-    const ok = await updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
+    const ok = updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
     if (ok) setEditing(false);
   };
 
-  const onCancelBooking = async () => {
-    if (requireAuth) {
-      router.push("/login");
-      return;
-    }
-    await cancelBooking(booking.id);
+  const onCancelBooking = () => {
+    cancelBooking(booking.id);
     router.push("/bookings");
   };
 
-  const onDeleteBooking = async () => {
-    if (requireAuth) {
-      router.push("/login");
-      return;
-    }
-    await deleteBooking(booking.id);
+  const onDeleteBooking = () => {
+    deleteBooking(booking.id);
     router.push("/bookings");
   };
 
@@ -189,7 +177,7 @@ export function BookingDetailScreen({ bookingId }) {
           <h2 className="font-display text-base font-black">{t("chooseServices")}</h2>
           {editing ? (
             <div className="mt-3 grid gap-2">
-              {catalog.services.map((service) => {
+              {serviceCatalog.map((service) => {
                 const selected = draft.services.includes(service.id);
                 return (
                   <button
