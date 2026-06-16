@@ -51,7 +51,9 @@ export default function LoginPage() {
     if (!supabase) return setStatus(notConfigured);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo }
+      // prompt=select_account forces Google's account chooser every time, so a
+      // signed-out user isn't silently re-logged into the previous account.
+      options: { redirectTo, queryParams: { prompt: "select_account" } }
     });
     if (error) setStatus(error.message);
   }
@@ -67,7 +69,10 @@ export default function LoginPage() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: name.trim() }, emailRedirectTo: redirectTo }
+        options: {
+          data: { full_name: name.trim() },
+          emailRedirectTo: redirectTo
+        }
       });
       if (error) {
         // "User already registered" is returned when email confirmation is off.
