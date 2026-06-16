@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "./TopNav.jsx";
 import { BottomNav } from "./BottomNav.jsx";
 import { useApp } from "../../lib/AppContext.jsx";
+import { isAdminCustomerMode } from "../../lib/adminPortal.js";
 
 // Routes that show the mobile bottom nav (mirrors the old `bottomNavByScreen`
 // map). Detail / booking / confirmation / explore / plans render their own
@@ -34,7 +35,11 @@ export function AppShell({ children }) {
   // "/"). Customers have no home override and stay in the customer app.
   useEffect(() => {
     if (auth.loading) return;
-    const home = ROLE_HOME[auth.profile?.role];
+    const role = auth.profile?.role;
+    const home = ROLE_HOME[role];
+    // Admins can opt into the customer portal (see adminPortal.js) — don't bounce
+    // them back to /admin while that session preference is on.
+    if (role === "admin" && isAdminCustomerMode()) return;
     if (home && !isRoleExempt(pathname, home)) {
       router.replace(home);
     }

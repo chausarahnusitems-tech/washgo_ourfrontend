@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatVnd, getVouchers } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
+import { exitCustomerPortal } from "../lib/adminPortal.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -187,6 +188,9 @@ function OwnerToolsCard() {
   const ownerStatus = auth.profile?.owner_status ?? "none";
   const isOwner = role === "owner";
 
+  // Admins don't apply to be owners — they get the admin-console card instead.
+  if (role === "admin") return null;
+
   async function apply() {
     setBusy(true);
     const { error } = await applyForOwner();
@@ -223,6 +227,27 @@ function OwnerToolsCard() {
           </Button>
         </div>
       )}
+    </section>
+  );
+}
+
+// Admin console entry point shown on an admin's customer-portal account page, so
+// they can hop back to /admin (the customer portal is opt-in for admins).
+function AdminToolsCard() {
+  const { auth, mode } = useApp();
+  const router = useRouter();
+  if (mode !== "backend" || auth.profile?.role !== "admin") return null;
+  return (
+    <section className="rounded-2xl border border-black/10 bg-white p-5">
+      <div className="flex items-center gap-2">
+        <Icon name="ShieldCheck" className="h-5 w-5 text-wash-500" />
+        <h2 className="font-display text-lg font-black">Admin</h2>
+      </div>
+      <p className="mt-3 text-sm text-neutral-600">You’re in the customer portal.</p>
+      <Button className="mt-3" onClick={() => exitCustomerPortal(router)}>
+        <Icon name="ShieldCheck" className="h-4 w-4" />
+        Back to admin console
+      </Button>
     </section>
   );
 }
@@ -362,6 +387,7 @@ function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, av
           <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
           <SettingsCard />
           <OwnerToolsCard />
+          <AdminToolsCard />
         </>
       ) : (
         <SignedOutPrompt t={t} onAuth={onAuth} />
@@ -475,6 +501,7 @@ function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, a
 
               <SettingsCard />
               <OwnerToolsCard />
+              <AdminToolsCard />
             </>
           ) : (
             <SignedOutPrompt t={t} onAuth={onAuth} />

@@ -58,6 +58,20 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
     }
   };
 
+  // Imported, info-only listing (business hasn't partnered with Washgo yet): no
+  // booking / payment, just contact details. See migration 0020.
+  const isDirectory = shop.listingType === "directory";
+
+  // "Own this business?" — go to the verification form where the owner submits
+  // services, hours and a location photo for admin review (see ClaimListingScreen).
+  const onClaim = () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    router.push(`/claim/${shop.id}`);
+  };
+
   const isMobile = variant === "mobile";
   const isFav = (state.favorites ?? []).includes(shop.id);
 
@@ -165,6 +179,18 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           {t("getDirections")}
         </button>
 
+        {/* Directory listings aren't bookable, so the primary action is a direct
+            phone call to the shop. Hidden when no number is on record. */}
+        {isDirectory && shop.phone ? (
+          <a
+            href={`tel:${shop.phone.replace(/\s+/g, "")}`}
+            className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
+          >
+            <Icon name="Phone" className="h-4 w-4" />
+            {t("callShop")}
+          </a>
+        ) : null}
+
         {mode === "backend" && shop.ownerId ? (
           <button
             type="button"
@@ -185,13 +211,24 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           )}
         />
 
-        <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("serviceIncluded")}</h2>
-        <div className="mt-2">
-          <ServiceChips shop={shop} t={t} />
-        </div>
+        {isDirectory ? (
+          shop.notes ? (
+            <>
+              <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("aboutShop")}</h2>
+              <p className="mt-2 text-sm text-neutral-600">{shop.notes}</p>
+            </>
+          ) : null
+        ) : (
+          <>
+            <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("serviceIncluded")}</h2>
+            <div className="mt-2">
+              <ServiceChips shop={shop} t={t} />
+            </div>
+          </>
+        )}
 
         {expanded ? (
-          <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          <dl className={cx("mt-3 grid gap-2 text-sm", isDirectory ? "grid-cols-1" : "grid-cols-2")}>
             <div className="rounded-xl bg-neutral-100 px-3 py-2">
               <dt className="text-[0.7rem] text-neutral-500">{t("recommended")}</dt>
               <dd className="flex items-center gap-1 font-bold text-wash-500">
@@ -199,13 +236,16 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
                 {shop.rating} ({shop.reviews})
               </dd>
             </div>
-            <div className="rounded-xl bg-neutral-100 px-3 py-2">
-              <dt className="text-[0.7rem] text-neutral-500">{t("startingAt")}</dt>
-              <dd className="flex items-center gap-1 font-bold text-wash-500">
-                <Icon name="Star" className="h-3.5 w-3.5" />
-                {formatVnd(shop.starting)}
-              </dd>
-            </div>
+            {/* Directory listings have no Washgo pricing — only show the rating. */}
+            {isDirectory ? null : (
+              <div className="rounded-xl bg-neutral-100 px-3 py-2">
+                <dt className="text-[0.7rem] text-neutral-500">{t("startingAt")}</dt>
+                <dd className="flex items-center gap-1 font-bold text-wash-500">
+                  <Icon name="Star" className="h-3.5 w-3.5" />
+                  {formatVnd(shop.starting)}
+                </dd>
+              </div>
+            )}
           </dl>
         ) : null}
 
@@ -219,17 +259,35 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
         </button>
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-t border-black/10 px-5 py-4">
-        <div>
-          <strong className="block text-2xl font-black leading-none">
-            {formatVnd(shop.starting)}
-          </strong>
-          <span className="text-xs text-neutral-500">{t("startingAt")}</span>
+      {isDirectory ? (
+        <div className="border-t border-black/10 px-5 py-4">
+          <p className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700">
+            <Icon name="Info" className="mt-0.5 h-4 w-4 shrink-0" />
+            {t("notOnWashgo")}
+          </p>
+          {mode === "backend" ? (
+            <button
+              type="button"
+              onClick={onClaim}
+              className="mt-2 bg-transparent p-0 text-xs font-bold text-wash-500 underline-offset-2 hover:underline"
+            >
+              {t("claimListing")}
+            </button>
+          ) : null}
         </div>
-        <Button onClick={() => onBook?.(shop.id)} className="px-8">
-          {t("bookNow")}
-        </Button>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between gap-4 border-t border-black/10 px-5 py-4">
+          <div>
+            <strong className="block text-2xl font-black leading-none">
+              {formatVnd(shop.starting)}
+            </strong>
+            <span className="text-xs text-neutral-500">{t("startingAt")}</span>
+          </div>
+          <Button onClick={() => onBook?.(shop.id)} className="px-8">
+            {t("bookNow")}
+          </Button>
+        </div>
+      )}
     </article>
   );
 }

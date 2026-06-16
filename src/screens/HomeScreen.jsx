@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
 import { formatVnd, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
@@ -87,6 +88,17 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
           <Icon name="Filter" className="h-5 w-5" />
         </button>
       </div>
+
+      <Link
+        href="/claim/new"
+        className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-wash-200 bg-wash-50 px-4 py-3 text-sm font-bold text-wash-600"
+      >
+        <span className="inline-flex items-center gap-2">
+          <Icon name="Plus" className="h-4 w-4" />
+          Own a car wash? List it on Washgo
+        </span>
+        <Icon name="ArrowLeft" className="h-4 w-4 rotate-180" />
+      </Link>
 
       <div className="mt-5 flex items-center justify-between">
         <h2 className="font-display text-base font-black">{t("recommended")}</h2>
@@ -223,6 +235,13 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebook,
                 <Icon name="RotateCcw" className="h-5 w-5" />
                 {t("rebook")}
               </Button>
+              <Link
+                href="/claim/new"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-wash-300 bg-wash-50 px-4 text-sm font-bold text-wash-600 transition hover:bg-wash-100"
+              >
+                <Icon name="Plus" className="h-5 w-5" />
+                List your car wash
+              </Link>
             </div>
           </DashCard>
 

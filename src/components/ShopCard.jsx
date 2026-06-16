@@ -12,6 +12,8 @@ export function ShopCard({ shop, t, onSelect, active = false }) {
   const router = useRouter();
   const { state, toggleFavorite, requireAuth } = useApp();
   const isFav = (state.favorites ?? []).includes(shop.id);
+  // Imported, info-only listing (not a Washgo partner yet) — no price / booking.
+  const isDirectory = shop.listingType === "directory";
 
   const onToggleFav = () => {
     if (requireAuth) {
@@ -78,9 +80,16 @@ export function ShopCard({ shop, t, onSelect, active = false }) {
             <Icon name="Star" className="h-3.5 w-3.5" />
             {shop.rating} ({shop.reviews})
           </span>
-          <strong className="text-ink">
-            {t("from")} {formatVnd(shop.starting)}
-          </strong>
+          {isDirectory ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-black text-amber-700">
+              <Icon name="Info" className="h-3 w-3" />
+              {t("infoOnly")}
+            </span>
+          ) : (
+            <strong className="text-ink">
+              {t("from")} {formatVnd(shop.starting)}
+            </strong>
+          )}
         </div>
       </div>
     </article>

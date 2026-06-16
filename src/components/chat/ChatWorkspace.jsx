@@ -12,8 +12,14 @@ import {
 } from "../../lib/data/api.js";
 import { cx } from "../../lib/cx.js";
 
-function convLabel(c) {
-  if (c.kind === "support") return "Support";
+// Label a thread from the viewer's perspective. A support thread shows the OTHER
+// party: the user themselves see "Support" (admins), while an admin sees the
+// user's name/email. Shop threads show the shop name.
+function convLabel(c, uid) {
+  if (c.kind === "support") {
+    if (c.createdBy && c.createdBy === uid) return "Support";
+    return c.creatorName || c.creatorEmail || "User";
+  }
   return c.shopName || "Shop chat";
 }
 
@@ -31,6 +37,14 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [body, setBody] = useState("");
   const [loadingList, setLoadingList] = useState(true);
   const bottomRef = useRef(null);
+
+  // Follow a changing `?c=` deep-link even on a same-route navigation (e.g. the
+  // admin clicks "Message" on another applicant while already on /admin/messages).
+  // useState only seeds activeId once, so a query-only change would otherwise be
+  // ignored and keep the previous thread open.
+  useEffect(() => {
+    if (initialConversationId) setActiveId(initialConversationId);
+  }, [initialConversationId]);
 
   const reloadList = useCallback(async () => {
     if (!supabase || !uid) {
@@ -146,7 +160,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-neutral-100 text-neutral-500">
                       {c.kind === "support" ? <Headset className="h-4 w-4" /> : <Store className="h-4 w-4" />}
                     </span>
-                    <span className="truncate text-sm font-bold text-ink">{convLabel(c)}</span>
+                    <span className="truncate text-sm font-bold text-ink">{convLabel(c, uid)}</span>
                   </button>
                 </li>
               ))}
@@ -164,7 +178,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                 <MessageCircle className="h-5 w-5 text-neutral-500" />
               </button>
               <h3 className="font-display text-base font-black">
-                {convLabel(conversations.find((c) => c.id === activeId) ?? {})}
+                {convLabel(conversations.find((c) => c.id === activeId) ?? {}, uid)}
               </h3>
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">

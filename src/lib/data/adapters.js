@@ -48,6 +48,12 @@ export function adaptShop(row, origin = userLocation) {
   return {
     id: row.id,
     ownerId: row.owner_id ?? null,
+    // 'partner' = a real bookable Washgo shop; 'directory' = an imported, info-only
+    // listing (business hasn't partnered yet — shown on the map but not bookable).
+    listingType: row.listing_type ?? "partner",
+    phone: row.phone ?? "",
+    notes: row.notes ?? "",
+    claimedBy: row.claimed_by ?? null,
     name: row.name,
     district: row.district ?? "",
     address: row.address ?? "",

@@ -143,7 +143,13 @@ function pickShopColumns(payload) {
 }
 
 function withServiceIds(row) {
-  return { ...row, serviceIds: (row.shop_services ?? []).map((s) => s.service_id) };
+  return {
+    ...row,
+    serviceIds: (row.shop_services ?? []).map((s) => s.service_id),
+    // Custom services count too when deciding if a shop is publishable (a claimed
+    // or applied shop's services land in shop_custom_services, not the catalogue).
+    customServiceCount: (row.shop_custom_services ?? []).length
+  };
 }
 
 function slugify(name) {
@@ -162,7 +168,7 @@ export async function fetchOwnerShops(supabase, ownerId) {
   const rows = unwrap(
     await supabase
       .from("shops")
-      .select("*, shop_services(service_id)")
+      .select("*, shop_services(service_id), shop_custom_services(id)")
       .eq("owner_id", ownerId)
       .order("created_at", { ascending: false })
   );
@@ -173,7 +179,7 @@ export async function fetchOwnerShop(supabase, shopId) {
   const row = unwrap(
     await supabase
       .from("shops")
-      .select("*, shop_services(service_id)")
+      .select("*, shop_services(service_id), shop_custom_services(id)")
       .eq("id", shopId)
       .single()
   );
@@ -193,7 +199,7 @@ export async function createShop(supabase, ownerId, payload) {
     const { data, error } = await supabase
       .from("shops")
       .insert({ id, owner_id: ownerId, ...pickShopColumns(payload) })
-      .select("*, shop_services(service_id)")
+      .select("*, shop_services(service_id), shop_custom_services(id)")
       .single();
     if (!error) {
       await supabase.rpc("set_shop_status", { p_shop_id: id, p_status: "draft" });
@@ -214,7 +220,7 @@ export async function updateShop(supabase, shopId, patch) {
       .from("shops")
       .update(pickShopColumns(patch))
       .eq("id", shopId)
-      .select("*, shop_services(service_id)")
+      .select("*, shop_services(service_id), shop_custom_services(id)")
       .single()
   );
   return withServiceIds(row);
@@ -307,6 +313,8 @@ export async function fetchOwnerBookings(supabase, shopIds) {
 // All shops, optionally filtered to one status. Each row carries serviceIds and
 // the owner's contact (email/name) for the review console.
 export async function fetchAdminShops(supabase, status) {
+  // The admin directory shows EVERY shop on the platform — partner shops (which
+  // owners run / get moderated) and the imported info-only directory listings.
   let query = supabase
     .from("shops")
     .select("*, shop_services(service_id)")
@@ -328,7 +336,9 @@ export async function fetchAdminShops(supabase, status) {
 
 // Counts per status for the admin dashboard badges.
 export async function fetchAdminShopCounts(supabase) {
-  const rows = unwrap(await supabase.from("shops").select("status"));
+  const rows = unwrap(
+    await supabase.from("shops").select("status").eq("listing_type", "partner")
+  );
   return rows.reduce((acc, r) => {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
     return acc;
@@ -340,13 +350,21 @@ export async function fetchAdminShopCounts(supabase) {
 // Customers who applied to run a car wash (owner_status='pending'). Readable by
 // admins via the "Admins can view all profiles" policy.
 export async function fetchOwnerApplications(supabase) {
-  return unwrap(
+  const rows = unwrap(
     await supabase
       .from("profiles")
       .select("id, email, full_name, owner_status, created_at")
       .eq("owner_status", "pending")
       .order("created_at", { ascending: true })
   );
+  // People applying through a shop application (listing claim) are reviewed in
+  // the Listing claims queue — keep them out of this one to avoid a duplicate
+  // approval that would grant the owner role without setting up their shop.
+  const claimRows = unwrap(
+    await supabase.from("listing_claims").select("user_id").eq("status", "pending")
+  );
+  const claimUserIds = new Set(claimRows.map((r) => r.user_id));
+  return rows.filter((r) => !claimUserIds.has(r.id));
 }
 
 // Admin decision on an application; 'approved' also grants the owner role.
@@ -354,6 +372,108 @@ export async function setOwnerStatus(supabase, userId, status) {
   return unwrap(
     await supabase.rpc("set_owner_status", { p_user_id: userId, p_status: status })
   );
+}
+
+// ---- Directory listings: claim / verification onboarding -------------------
+// A directory listing (imported, info-only car wash) can be claimed by its real
+// owner. They submit verification details (services + pricing, working hours, a
+// location photo) which sit as a PENDING claim; an admin approves, which turns
+// the listing into a partner shop they own (unpublished) and applies the
+// details, after which the owner can release it publicly themselves.
+
+// Upload a claim's location photo to the user-namespaced claim-photos bucket
+// (<uid>/<shopId>) and return its public URL.
+export async function uploadClaimPhoto(supabase, userId, shopId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${userId}/${shopId}.${ext}`;
+  const { error } = await supabase.storage
+    .from("claim-photos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("claim-photos").getPublicUrl(path);
+  return `${pub.publicUrl}?t=${Date.now()}`;
+}
+
+// Submit (or resubmit) a verification claim for an existing directory listing.
+export async function submitListingClaim(supabase, shopId, details) {
+  return unwrap(
+    await supabase.rpc("submit_listing_claim", {
+      p_shop_id: shopId,
+      p_services: details.services ?? [],
+      p_open: details.openTime || null,
+      p_close: details.closeTime || null,
+      p_hours: details.hours || null,
+      p_phone: details.phone || null,
+      p_photo_url: details.photoUrl || null,
+      p_note: details.note || null,
+      p_closed_dates: details.closedDates ?? []
+    })
+  );
+}
+
+// Apply for a brand-new shop that isn't on the map yet. Also registers the
+// caller as a pending owner applicant (granted on approval).
+export async function submitNewListing(supabase, details) {
+  return unwrap(
+    await supabase.rpc("submit_new_listing", {
+      p_name: details.name,
+      p_address: details.address || null,
+      p_district: details.district || null,
+      p_lat: details.lat ?? null,
+      p_lng: details.lng ?? null,
+      p_services: details.services ?? [],
+      p_open: details.openTime || null,
+      p_close: details.closeTime || null,
+      p_hours: details.hours || null,
+      p_phone: details.phone || null,
+      p_photo_url: details.photoUrl || null,
+      p_note: details.note || null,
+      p_closed_dates: details.closedDates ?? []
+    })
+  );
+}
+
+// The signed-in user's own claim for a shop (RLS scopes the read to self), or
+// null if they haven't claimed it.
+export async function fetchMyListingClaim(supabase, shopId) {
+  const rows = unwrap(
+    await supabase.from("listing_claims").select("*").eq("shop_id", shopId).limit(1)
+  );
+  return rows[0] ?? null;
+}
+
+// Pending claims for admin review, with the shop and claimant contact joined.
+export async function fetchListingClaims(supabase) {
+  const rows = unwrap(
+    await supabase
+      .from("listing_claims")
+      .select("*, shops(name, district, address)")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+  );
+  const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  let byId = {};
+  if (userIds.length) {
+    const claimers = unwrap(
+      await supabase.from("profiles").select("id, email, full_name").in("id", userIds)
+    );
+    byId = Object.fromEntries(claimers.map((c) => [c.id, c]));
+  }
+  return rows.map((r) => ({
+    ...r,
+    shop: r.shops ?? null,
+    claimer: byId[r.user_id] ?? null
+  }));
+}
+
+// Admin decisions. Approve converts the listing into an owned partner shop and
+// applies the submitted details; reject leaves the directory listing as-is.
+export async function approveListingClaim(supabase, claimId) {
+  return unwrap(await supabase.rpc("approve_listing_claim", { p_claim_id: claimId }));
+}
+
+export async function rejectListingClaim(supabase, claimId) {
+  return unwrap(await supabase.rpc("reject_listing_claim", { p_claim_id: claimId }));
 }
 
 // ---- Shop scheduling: publish, slot overrides, custom services -------------
@@ -439,8 +559,17 @@ export async function openConversation(supabase, kind, shopId = null) {
   );
 }
 
+// Admin: open (find-or-create) a specific user's support thread, e.g. to message
+// an applicant about a verification visit.
+export async function openSupportThread(supabase, userId) {
+  return unwrap(await supabase.rpc("open_support_thread", { p_user_id: userId }));
+}
+
 // Conversations the signed-in user can see (RLS-scoped: their threads, or all
-// for admins). `kind` optionally filters (e.g. admin support inbox).
+// for admins). `kind` optionally filters (e.g. admin support inbox). The thread
+// creator's name/email is joined so the admin can see WHO each support thread is
+// with (admins can read all profiles; for non-admins this resolves to self only,
+// which is fine — they label support threads as "Support" anyway).
 export async function fetchConversations(supabase, kind = null) {
   let query = supabase
     .from("conversations")
@@ -448,11 +577,24 @@ export async function fetchConversations(supabase, kind = null) {
     .order("created_at", { ascending: false });
   if (kind) query = query.eq("kind", kind);
   const rows = unwrap(await query);
+
+  const creatorIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))];
+  let byId = {};
+  if (creatorIds.length) {
+    const people = unwrap(
+      await supabase.from("profiles").select("id, full_name, email").in("id", creatorIds)
+    );
+    byId = Object.fromEntries(people.map((p) => [p.id, p]));
+  }
+
   return rows.map((r) => ({
     id: r.id,
     kind: r.kind,
     shopId: r.shop_id,
     shopName: r.shops?.name ?? null,
+    createdBy: r.created_by ?? null,
+    creatorName: byId[r.created_by]?.full_name ?? null,
+    creatorEmail: byId[r.created_by]?.email ?? null,
     createdAt: r.created_at
   }));
 }
