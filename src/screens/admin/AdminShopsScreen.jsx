@@ -17,13 +17,24 @@ const FILTERS = [
   ["draft", "Drafts", "draft"]
 ];
 
+const TYPE_FILTERS = [
+  ["all", "All types"],
+  ["partner", "Partners"],
+  ["directory", "Directory"]
+];
+
 // Full shop directory for ongoing moderation: filter by status and take any
 // admin-allowed action (approve / send back / suspend / reinstate).
 export function AdminShopsScreen() {
   const [filter, setFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const status = FILTERS.find(([key]) => key === filter)?.[2];
   const { shops, loading, approve, sendBack, suspend, reinstate } = useAdminShops(status);
   const [busyId, setBusyId] = useState(null);
+
+  const visibleShops = shops.filter(
+    (s) => typeFilter === "all" || (s.listing_type ?? "partner") === typeFilter
+  );
 
   async function act(id, fn) {
     setBusyId(id);
@@ -105,17 +116,37 @@ export function AdminShopsScreen() {
         ))}
       </div>
 
+      <div className="mt-2 flex flex-wrap gap-2">
+        {TYPE_FILTERS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTypeFilter(key)}
+            aria-pressed={typeFilter === key}
+            className={cx(
+              "rounded-full border px-3 py-1 text-xs font-semibold transition",
+              typeFilter === key
+                ? "border-wash-500 bg-wash-50 text-wash-600"
+                : "border-black/10 bg-white text-neutral-500 hover:bg-neutral-50"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <p className="mt-8 text-sm text-neutral-500">Loading…</p>
-      ) : shops.length === 0 ? (
+      ) : visibleShops.length === 0 ? (
         <div className="mt-8 grid place-items-center rounded-2xl border border-dashed border-black/15 bg-white px-6 py-12 text-center">
           <Store className="h-8 w-8 text-neutral-300" aria-hidden="true" />
           <p className="mt-3 text-sm font-semibold text-ink">No shops here</p>
         </div>
       ) : (
         <ul className="mt-6 grid gap-3">
-          {shops.map((shop) => {
+          {visibleShops.map((shop) => {
             const busy = busyId === shop.id;
+            const isDirectory = (shop.listing_type ?? "partner") === "directory";
             return (
               <li key={shop.id} className="rounded-2xl border border-black/5 bg-white p-4">
                 <div className="flex items-start gap-3">
@@ -132,13 +163,21 @@ export function AdminShopsScreen() {
                         {shop.name || "Untitled shop"}
                       </h2>
                       <ShopStatusBadge status={shop.status} />
+                      {isDirectory ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.6rem] font-black uppercase tracking-wide text-amber-700">
+                          Directory
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-0.5 truncate text-sm text-neutral-500">
                       {shop.address || shop.district || "No address provided"}
                     </p>
                     <p className="mt-1 text-xs text-neutral-400">
-                      From {formatVnd(shop.starting_price)} · {shop.serviceIds?.length ?? 0} services
-                      {shop.owner?.email ? ` · ${shop.owner.email}` : ""}
+                      {isDirectory
+                        ? "Info-only listing · not a Washgo partner"
+                        : `From ${formatVnd(shop.starting_price)} · ${shop.serviceIds?.length ?? 0} services${
+                            shop.owner?.email ? ` · ${shop.owner.email}` : ""
+                          }`}
                     </p>
                   </div>
                 </div>

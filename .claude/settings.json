@@ -6,7 +6,9 @@
       "Bash(node -e \"let p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts\\)\\)\")",
       "Bash(node_modules/.bin/next lint *)",
       "Bash(node_modules/.bin/next build *)",
-      "Bash(grep -rn \"router.push\\\\|router.replace\\\\|href=\\\\\"/chat\\\\|href={\\\\`/chat\\\\|/chat?c=\\\\|navigate\\(\" src --include=\"*.jsx\" --include=\"*.js\")"
+      "Bash(grep -rn \"router.push\\\\|router.replace\\\\|href=\\\\\"/chat\\\\|href={\\\\`/chat\\\\|/chat?c=\\\\|navigate\\(\" src --include=\"*.jsx\" --include=\"*.js\")",
+      "Bash(find ~/Desktop ~/Downloads ~/Documents /Users/chauyilingsarah/Desktop/washgo_ourfrontend -maxdepth 3 -iname \"*carwash*\" -o -iname \"*car_wash*\" -o -iname \"HCMC*\" 2>/dev/null | head -20)",
+      "Read(//Users/chauyilingsarah/Desktop/**)"
     ],
     "additionalDirectories": [
       "/tmp"

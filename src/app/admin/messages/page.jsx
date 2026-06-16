@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { AdminMessagesScreen } from "@/screens/admin/AdminMessagesScreen.jsx";
 
 export default function AdminMessagesPage() {
-  return <AdminMessagesScreen />;
+  return (
+    <Suspense fallback={null}>
+      <AdminMessagesScreen />
+    </Suspense>
+  );
 }

@@ -91,6 +91,28 @@ export function BookingScreen({ shopId }) {
     );
   }
 
+  // Directory listings (imported, info-only shops that haven't partnered with
+  // Washgo yet) can't be booked — guard the deep link /shops/<directoryId>/book.
+  if (shop.listingType === "directory") {
+    return (
+      <section className="h-full overflow-y-auto bg-white px-3.5 pb-16 pt-7 lg:bg-mist">
+        <div className="mx-auto w-full max-w-2xl">
+          <TopBar compact title={t("bookNow")} subtitle={shop.name} onBack={onBack} />
+          <div className="mt-10 grid place-items-center gap-4 rounded-[18px] border border-black/10 bg-white px-6 py-14 text-center">
+            <span className="grid h-14 w-14 place-items-center rounded-full bg-amber-50 text-amber-600">
+              <Icon name="Info" className="h-7 w-7" />
+            </span>
+            <p className="text-sm text-neutral-500">{t("notBookable")}</p>
+            <Button onClick={() => router.push("/explore")}>
+              <Icon name="Search" className="h-5 w-5" />
+              {t("exploreCarWashes")}
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   const onConfirm = async () => {
     if (submitting) return;
     if (requireAuth) {

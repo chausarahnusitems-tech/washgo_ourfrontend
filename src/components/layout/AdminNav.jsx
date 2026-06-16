@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ClipboardCheck, LogOut, MessageCircle, ShieldCheck, Store, UserCheck } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, BadgeCheck, ClipboardCheck, LogOut, MessageCircle, ShieldCheck, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
+import { enterCustomerPortal } from "../../lib/adminPortal.js";
 
 // Admin-area navigation. Left sidebar on desktop, sticky top bar on mobile —
 // same shape as OwnerNav but for the moderation console.
 const NAV_ITEMS = [
   { key: "queue", label: "Approval queue", href: "/admin", icon: ClipboardCheck },
   { key: "shops", label: "All shops", href: "/admin/shops", icon: Store },
-  { key: "owners", label: "Owner applications", href: "/admin/owners", icon: UserCheck },
+  { key: "claims", label: "Applications", href: "/admin/claims", icon: BadgeCheck },
   { key: "messages", label: "Messages", href: "/admin/messages", icon: MessageCircle }
 ];
 
@@ -24,6 +25,7 @@ function isActive(pathname, href) {
 export function AdminNav() {
   const { auth, signOut } = useApp();
   const pathname = usePathname();
+  const router = useRouter();
   const name = auth.profile?.full_name || auth.user?.email || "Admin";
 
   const links = NAV_ITEMS.map(({ key, label, href, icon: LucideIcon }) => {
@@ -64,6 +66,14 @@ export function AdminNav() {
           <p className="truncate px-3 text-xs font-semibold text-neutral-500">{name}</p>
           <button
             type="button"
+            onClick={() => enterCustomerPortal(router)}
+            className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold text-neutral-600 transition hover:bg-neutral-100"
+          >
+            <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+            Customer app
+          </button>
+          <button
+            type="button"
             onClick={signOut}
             className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold text-neutral-600 transition hover:bg-neutral-100"
           >
@@ -99,6 +109,14 @@ export function AdminNav() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={() => enterCustomerPortal(router)}
+            aria-label="Customer app"
+            className="grid h-10 w-10 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-100"
+          >
+            <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+          </button>
           <button
             type="button"
             onClick={signOut}

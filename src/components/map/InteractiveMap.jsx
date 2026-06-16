@@ -29,9 +29,13 @@ function applyMarkerBaseStyle(el) {
   el.style.willChange = "transform";
 }
 
-// Pin palette (mirrors Tailwind `wash-500` / `wash-700`).
+// Pin palette (mirrors Tailwind `wash-500` / `wash-700`). Directory listings —
+// imported, info-only shops that aren't Washgo partners yet — use a muted grey
+// bubble so they read as visually distinct from bookable shops.
 const PIN_COLOR = "#ef3124";
 const PIN_COLOR_ACTIVE = "#b81c12";
+const PIN_COLOR_DIRECTORY = "#64748b";
+const PIN_COLOR_DIRECTORY_ACTIVE = "#475569";
 
 // Inline car glyph (lucide "car"), drawn white inside the price bubble.
 const CAR_ICON =
@@ -65,7 +69,13 @@ function ensurePinStyles() {
     ".wg-pin--active{z-index:1}",
     ".wg-pin--active .wg-pin__inner{transform:scale(1.16)}",
     `.wg-pin--active .wg-pin__bubble{background:${PIN_COLOR_ACTIVE}}`,
-    `.wg-pin--active .wg-pin__tip::after{border-top-color:${PIN_COLOR_ACTIVE}}`
+    `.wg-pin--active .wg-pin__tip::after{border-top-color:${PIN_COLOR_ACTIVE}}`,
+    // Directory (info-only) pins: muted grey bubble + tip. The combined
+    // `--directory.--active` selectors outrank the plain `--active` rule above.
+    `.wg-pin--directory .wg-pin__bubble{background:${PIN_COLOR_DIRECTORY}}`,
+    `.wg-pin--directory .wg-pin__tip::after{border-top-color:${PIN_COLOR_DIRECTORY}}`,
+    `.wg-pin--directory.wg-pin--active .wg-pin__bubble{background:${PIN_COLOR_DIRECTORY_ACTIVE}}`,
+    `.wg-pin--directory.wg-pin--active .wg-pin__tip::after{border-top-color:${PIN_COLOR_DIRECTORY_ACTIVE}}`
   ].join("\n");
   document.head.appendChild(style);
 }
@@ -76,10 +86,12 @@ function ensurePinStyles() {
 // so the element's box-bottom IS the visual tip — that's what keeps the pin from
 // appearing to drift against the map (the old SVG had ~5px of empty space below
 // its tip, see the StackOverflow thread on markers "moving" on zoom).
-function createPinElement(priceText, active) {
+function createPinElement(priceText, active, directory = false) {
   ensurePinStyles();
   const el = document.createElement("div");
-  el.className = active ? "wg-pin wg-pin--active" : "wg-pin";
+  el.className = ["wg-pin", active && "wg-pin--active", directory && "wg-pin--directory"]
+    .filter(Boolean)
+    .join(" ");
   applyMarkerBaseStyle(el);
 
   const inner = document.createElement("div");
@@ -242,8 +254,10 @@ export function InteractiveMap({
         return;
       }
 
-      const priceText = shop.starting != null ? formatVnd(shop.starting) : "";
-      const el = createPinElement(priceText, shop.id === selectedIdRef.current);
+      const isDirectory = shop.listingType === "directory";
+      // Directory listings have no Washgo price — show just the car glyph.
+      const priceText = !isDirectory && shop.starting != null ? formatVnd(shop.starting) : "";
+      const el = createPinElement(priceText, shop.id === selectedIdRef.current, isDirectory);
       el.addEventListener("click", (event) => {
         event.stopPropagation();
         selectRef.current?.(shop.id);

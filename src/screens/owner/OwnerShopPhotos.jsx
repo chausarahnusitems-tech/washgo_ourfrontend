@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, Store } from "lucide-react";
+import { ImagePlus, Store, Trash2 } from "lucide-react";
 import { cx } from "../../lib/cx.js";
 import { Button } from "../../components/ui/Button.jsx";
 
@@ -30,6 +30,19 @@ export function OwnerShopPhotos({ shop, uploadPhoto, update }) {
     } catch (err) {
       console.error("[washgo] photo upload failed", err);
       setStatus(err?.message || "Upload failed.");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function onRemove() {
+    setStatus("uploading");
+    try {
+      await update(shop.id, { image_url: null });
+      setStatus(null);
+    } catch (err) {
+      console.error("[washgo] remove photo failed", err);
+      setStatus(err?.message || "Could not remove photo.");
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -79,6 +92,17 @@ export function OwnerShopPhotos({ shop, uploadPhoto, update }) {
           <ImagePlus className="h-4 w-4" aria-hidden="true" />
           {status === "uploading" ? "Uploading…" : shop.image_url ? "Replace photo" : "Upload photo"}
         </Button>
+        {shop.image_url && (
+          <Button
+            variant="ghost"
+            className="text-red-600 hover:bg-red-50"
+            onClick={onRemove}
+            disabled={status === "uploading"}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Remove
+          </Button>
+        )}
         {status && status !== "uploading" && (
           <span className="text-sm text-red-600">{status}</span>
         )}

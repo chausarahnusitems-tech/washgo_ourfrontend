@@ -172,7 +172,11 @@ function StatusActions({ shop, submit, setPublished }) {
     );
   }
   if (shop.status === "approved") {
-    const canPublish = (shop.serviceIds?.length ?? 0) > 0 && shop.address && shop.open_time && shop.close_time;
+    const canPublish =
+      ((shop.serviceIds?.length ?? 0) > 0 || (shop.customServiceCount ?? 0) > 0) &&
+      shop.address &&
+      shop.open_time &&
+      shop.close_time;
     return (
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3">
         <p className="flex-1 text-sm text-emerald-800">
