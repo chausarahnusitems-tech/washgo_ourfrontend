@@ -182,7 +182,6 @@ export function InteractiveMap({
     });
 
     mapRef.current = map;
-    if (typeof window !== "undefined") window.__wgmap = map; // TEMP debug probe
     // Containers that mount during a layout/transition can mis-measure; nudge.
     const raf = window.requestAnimationFrame(() => map.resize());
 
