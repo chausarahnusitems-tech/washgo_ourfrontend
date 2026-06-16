@@ -7,6 +7,7 @@ import {
   createShop,
   deleteShop,
   fetchOwnerShops,
+  setShopPublished,
   setShopServices,
   setShopStatus,
   updateShop,
@@ -86,6 +87,15 @@ export function useOwnerShops() {
     [supabase]
   );
 
+  // Release publicly / unpublish (only meaningful once approved).
+  const setPublished = useCallback(
+    async (shopId, published) => {
+      await setShopPublished(supabase, shopId, published);
+      setShops((prev) => prev.map((s) => (s.id === shopId ? { ...s, published } : s)));
+    },
+    [supabase]
+  );
+
   const saveServices = useCallback(
     async (shopId, serviceIds) => {
       const next = await setShopServices(supabase, shopId, serviceIds);
@@ -116,6 +126,7 @@ export function useOwnerShops() {
     update,
     remove,
     submit,
+    setPublished,
     saveServices,
     uploadPhoto
   };

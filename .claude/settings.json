@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"let p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts\\)\\)\")",
+      "Bash(node_modules/.bin/next lint *)",
+      "Bash(node_modules/.bin/next build *)",
+      "Bash(grep -rn \"router.push\\\\|router.replace\\\\|href=\\\\\"/chat\\\\|href={\\\\`/chat\\\\|/chat?c=\\\\|navigate\\(\" src --include=\"*.jsx\" --include=\"*.js\")"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}

@@ -131,7 +131,6 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
                 shop={shop}
                 t={t}
                 onSelect={onSelectMapShop}
-                onQuickView={onSelectMapShop}
                 active={shop.id === state.mapShop}
               />
             ))
@@ -227,7 +226,7 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
           <div className="grid gap-3 overflow-y-auto px-4 pb-5">
             {visibleShops.length ? (
               visibleShops.map((shop) => (
-                <ShopCard key={shop.id} shop={shop} t={t} onSelect={onSelectMapShop} onQuickView={onSelectMapShop} />
+                <ShopCard key={shop.id} shop={shop} t={t} onSelect={onSelectMapShop} />
               ))
             ) : (
               <div className="rounded-[18px] border border-black/10 bg-white p-7 text-center text-sm text-neutral-500">{t("noResults")}</div>

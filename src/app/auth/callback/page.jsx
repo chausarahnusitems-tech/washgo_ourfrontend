@@ -38,10 +38,26 @@ export default function AuthCallbackPage() {
     let active = true;
 
     // Full reload so AppProvider re-initialises with the new session cookie and
-    // the signed-in UI shows on the FIRST attempt.
-    function finish() {
+    // the signed-in UI shows on the FIRST attempt. First-time Google users have
+    // no email/password, so we send them to set one once (tracked by the
+    // pw_prompted metadata flag) before continuing to `next`.
+    async function finish() {
       if (handled.current) return;
       handled.current = true;
+      try {
+        const { data } = await supabase.auth.getUser();
+        const providers = data?.user?.app_metadata?.providers ?? [];
+        const needsPassword =
+          providers.includes("google") &&
+          !providers.includes("email") &&
+          !data?.user?.user_metadata?.pw_prompted;
+        if (needsPassword) {
+          window.location.assign(`/auth/set-password?next=${encodeURIComponent(next)}`);
+          return;
+        }
+      } catch {
+        /* fall through to the normal redirect on any lookup error */
+      }
       window.location.assign(next);
     }
     function fail() {

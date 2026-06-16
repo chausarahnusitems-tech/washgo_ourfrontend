@@ -172,11 +172,66 @@ function SettingsCard() {
   );
 }
 
+// Owner tools: lets a customer apply to run a car wash, shows their application
+// status, and — once approved — links into the owner-only dashboard (the
+// "owner mode" the user opts into; they're otherwise a normal customer).
+function OwnerToolsCard() {
+  const { t, auth, mode, applyForOwner } = useApp();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  // Owner concepts only exist in backend mode for a signed-in user.
+  if (mode !== "backend" || !auth.user) return null;
+
+  const role = auth.profile?.role;
+  const ownerStatus = auth.profile?.owner_status ?? "none";
+  const isOwner = role === "owner";
+
+  async function apply() {
+    setBusy(true);
+    const { error } = await applyForOwner();
+    setBusy(false);
+    if (error) window.alert(error);
+  }
+
+  return (
+    <section className="rounded-2xl border border-black/10 bg-white p-5">
+      <div className="flex items-center gap-2">
+        <Icon name="Sparkles" className="h-5 w-5 text-wash-500" />
+        <h2 className="font-display text-lg font-black">{t("ownerTools")}</h2>
+      </div>
+
+      {isOwner ? (
+        <div className="mt-3">
+          <p className="text-sm text-neutral-600">{t("ownerApproved")}</p>
+          <Button className="mt-3" onClick={() => router.push("/owner")}>
+            <Icon name="Sparkles" className="h-4 w-4" />
+            {t("openOwnerDashboard")}
+          </Button>
+        </div>
+      ) : ownerStatus === "pending" ? (
+        <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {t("ownerPending")}
+        </div>
+      ) : (
+        <div className="mt-3">
+          <p className="text-sm text-neutral-600">
+            {ownerStatus === "rejected" ? t("ownerRejected") : t("ownerPitch")}
+          </p>
+          <Button variant="secondary" className="mt-3" onClick={apply} disabled={busy}>
+            {busy ? "…" : ownerStatus === "rejected" ? t("ownerApplyAgain") : t("ownerApply")}
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function AccountScreen() {
   const isDesktop = useIsDesktop();
   const router = useRouter();
 
-  const { t, state, auth, mode, requireAuth, signOut, setLang, resetDemo, redeemVoucher } = useApp();
+  const { t, state, auth, mode, requireAuth, signOut, setLang, redeemVoucher } = useApp();
 
   const isSignedIn = Boolean(auth?.user);
   // The wallet ledger only exists for a signed-in backend account, so the
@@ -205,7 +260,6 @@ export function AccountScreen() {
     onHome: () => router.push("/"),
     onPlans: () => router.push("/plans"),
     onVouchers: () => router.push("/vouchers"),
-    onReset: resetDemo,
     onAuth: isSignedIn ? signOut : () => router.push("/login"),
     onRewards: () => router.push("/rewards"),
     onTopUp: () => router.push("/topup"),
@@ -241,7 +295,7 @@ function SignedOutPrompt({ t, onAuth }) {
 /* Mobile (original)                                                   */
 /* ------------------------------------------------------------------ */
 
-function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onLang, onHome, onPlans, onVouchers, onReset, onAuth, onRewards, onTopUp, onTransactions, onUseVoucher }) {
+function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onLang, onHome, onPlans, onVouchers, onAuth, onRewards, onTopUp, onTransactions, onUseVoucher }) {
   return (
     <section className="grid h-full content-start gap-4 overflow-y-auto bg-white px-4 py-7">
       <TopBar compact title={t("account")} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
@@ -307,7 +361,7 @@ function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, av
           </div>
           <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
           <SettingsCard />
-          <Button variant="secondary" onClick={onReset}>{t("resetDemo")}</Button>
+          <OwnerToolsCard />
         </>
       ) : (
         <SignedOutPrompt t={t} onAuth={onAuth} />
@@ -337,7 +391,7 @@ function RewardTile({ title, expires, tone, t }) {
   );
 }
 
-function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onPlans, onRewards, onReset, onAuth, onTopUp, onTransactions, onUseVoucher }) {
+function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onPlans, onRewards, onAuth, onTopUp, onTransactions, onUseVoucher }) {
   return (
     <section className="h-full overflow-y-auto bg-mist">
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[340px_1fr] gap-6 px-6 py-8 xl:px-10">
@@ -381,9 +435,6 @@ function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, a
           <Button variant="secondary" onClick={onAuth}>
             {isSignedIn ? t("signOut") : t("signIn")}
           </Button>
-          {isSignedIn ? (
-            <Button variant="secondary" onClick={onReset}>{t("resetDemo")}</Button>
-          ) : null}
         </aside>
 
         {/* Right: membership + rewards */}
@@ -423,6 +474,7 @@ function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, a
               </section>
 
               <SettingsCard />
+              <OwnerToolsCard />
             </>
           ) : (
             <SignedOutPrompt t={t} onAuth={onAuth} />

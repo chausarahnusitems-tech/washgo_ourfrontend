@@ -97,13 +97,13 @@ export function AdminQueueScreen() {
                     className="ml-auto min-h-9 px-3 text-sm"
                     disabled={busy}
                     onClick={() => {
-                      if (window.confirm("Send this shop back to the owner as a draft?")) {
+                      if (window.confirm("Reject this shop and send it back to the owner as a draft?")) {
                         act(shop.id, () => sendBack(shop.id));
                       }
                     }}
                   >
                     <Undo2 className="h-4 w-4" aria-hidden="true" />
-                    Send back
+                    Reject
                   </Button>
                 </div>
               </li>

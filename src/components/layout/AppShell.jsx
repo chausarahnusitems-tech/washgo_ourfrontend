@@ -1,10 +1,9 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "./TopNav.jsx";
 import { BottomNav } from "./BottomNav.jsx";
-import { QuickShopModal } from "../QuickShopModal.jsx";
 import { useApp } from "../../lib/AppContext.jsx";
 
 // Routes that show the mobile bottom nav (mirrors the old `bottomNavByScreen`
@@ -12,9 +11,10 @@ import { useApp } from "../../lib/AppContext.jsx";
 // footer or are desktop-only, so they show no bottom nav.
 const BOTTOM_NAV_ROUTES = new Set(["/", "/bookings", "/chat", "/rewards", "/vouchers", "/account"]);
 
-// Role homes: owners live under /owner, admins under /admin. We don't redirect
-// away from a role's own section, the auth flow, or login itself.
-const ROLE_HOME = { owner: "/owner", admin: "/admin" };
+// Role homes: admins are auto-routed into /admin. Owners are NOT force-routed —
+// they're ordinary customers with an extra owner area they opt into from their
+// profile (the "Owner mode" toggle), so they stay in the customer app by default.
+const ROLE_HOME = { admin: "/admin" };
 
 function isRoleExempt(pathname, home) {
   return (
@@ -53,9 +53,6 @@ export function AppShell({ children }) {
       <TopNav className="hidden lg:flex" />
       <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       {showBottomNav ? <BottomNav className="lg:hidden" /> : null}
-      <Suspense fallback={null}>
-        <QuickShopModal />
-      </Suspense>
     </div>
   );
 }

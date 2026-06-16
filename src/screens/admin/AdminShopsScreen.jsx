@@ -47,7 +47,7 @@ export function AdminShopsScreen() {
               Approve
             </Button>
             <Button variant="secondary" className="min-h-9 px-3 text-sm" disabled={busy} onClick={() => act(shop.id, () => sendBack(shop.id))}>
-              Send back
+              Reject
             </Button>
           </>
         );

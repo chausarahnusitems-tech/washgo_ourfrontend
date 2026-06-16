@@ -17,7 +17,8 @@ export async function fetchCatalog(supabase) {
     supabase
       .from("shops")
       .select("*, shop_services(service_id)")
-      .eq("status", "approved"),
+      .eq("status", "approved")
+      .eq("published", true),
     supabase.from("services").select("*").order("price"),
     supabase.from("plans").select("*").order("price")
   ]);
@@ -128,7 +129,9 @@ export async function removeFavorite(supabase, userId, shopId) {
 // the reviews trigger respectively.
 const SHOP_WRITE_COLUMNS = [
   "name", "district", "address", "phone", "starting_price", "wait_minutes",
-  "hours", "is_open", "promo", "lat", "lng", "image_url", "image_position"
+  "hours", "is_open", "promo", "lat", "lng", "image_url", "image_position",
+  // Phase 5: structured hours + per-slot capacity (published is RPC-only).
+  "open_time", "close_time", "max_cars_per_slot", "slot_minutes"
 ];
 
 function pickShopColumns(payload) {
@@ -330,4 +333,146 @@ export async function fetchAdminShopCounts(supabase) {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+// ---- Owner applications (admin) -------------------------------------------
+
+// Customers who applied to run a car wash (owner_status='pending'). Readable by
+// admins via the "Admins can view all profiles" policy.
+export async function fetchOwnerApplications(supabase) {
+  return unwrap(
+    await supabase
+      .from("profiles")
+      .select("id, email, full_name, owner_status, created_at")
+      .eq("owner_status", "pending")
+      .order("created_at", { ascending: true })
+  );
+}
+
+// Admin decision on an application; 'approved' also grants the owner role.
+export async function setOwnerStatus(supabase, userId, status) {
+  return unwrap(
+    await supabase.rpc("set_owner_status", { p_user_id: userId, p_status: status })
+  );
+}
+
+// ---- Shop scheduling: publish, slot overrides, custom services -------------
+
+// Release publicly / unpublish. Gated server-side: publishing needs an approved
+// shop.
+export async function setShopPublished(supabase, shopId, published) {
+  return unwrap(
+    await supabase.rpc("set_shop_published", { p_shop_id: shopId, p_published: published })
+  );
+}
+
+export async function fetchSlotOverrides(supabase, shopId) {
+  return unwrap(
+    await supabase
+      .from("shop_slot_overrides")
+      .select("*")
+      .eq("shop_id", shopId)
+      .order("date", { ascending: true })
+  );
+}
+
+// Upsert one special-day override (closed, or a custom per-slot cap).
+export async function setSlotOverride(supabase, shopId, date, { isClosed, maxCars }) {
+  return unwrap(
+    await supabase
+      .from("shop_slot_overrides")
+      .upsert(
+        {
+          shop_id: shopId,
+          date,
+          is_closed: Boolean(isClosed),
+          max_cars_per_slot: maxCars ?? null
+        },
+        { onConflict: "shop_id,date" }
+      )
+  );
+}
+
+export async function deleteSlotOverride(supabase, shopId, date) {
+  return unwrap(
+    await supabase.from("shop_slot_overrides").delete().eq("shop_id", shopId).eq("date", date)
+  );
+}
+
+export async function fetchCustomServices(supabase, shopId) {
+  return unwrap(
+    await supabase
+      .from("shop_custom_services")
+      .select("*")
+      .eq("shop_id", shopId)
+      .order("created_at", { ascending: true })
+  );
+}
+
+export async function addCustomService(supabase, shopId, { name, price, isOffer }) {
+  return unwrap(
+    await supabase
+      .from("shop_custom_services")
+      .insert({ shop_id: shopId, name, price: Math.round(price), is_offer: Boolean(isOffer) })
+      .select("*")
+      .single()
+  );
+}
+
+export async function removeCustomService(supabase, id) {
+  return unwrap(await supabase.from("shop_custom_services").delete().eq("id", id));
+}
+
+// Per-slot availability for a shop+date (counts + cap + closed). RLS-safe RPC.
+export async function fetchSlotAvailability(supabase, shopId, date) {
+  return unwrap(
+    await supabase.rpc("slot_availability", { p_shop_id: shopId, p_date: date })
+  );
+}
+
+// ---- Chat (customer / owner / admin) --------------------------------------
+
+// Find-or-create a thread (kind 'shop' needs a shopId; 'support' doesn't).
+export async function openConversation(supabase, kind, shopId = null) {
+  return unwrap(
+    await supabase.rpc("open_conversation", { p_kind: kind, p_shop_id: shopId })
+  );
+}
+
+// Conversations the signed-in user can see (RLS-scoped: their threads, or all
+// for admins). `kind` optionally filters (e.g. admin support inbox).
+export async function fetchConversations(supabase, kind = null) {
+  let query = supabase
+    .from("conversations")
+    .select("*, shops(name)")
+    .order("created_at", { ascending: false });
+  if (kind) query = query.eq("kind", kind);
+  const rows = unwrap(await query);
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    shopId: r.shop_id,
+    shopName: r.shops?.name ?? null,
+    createdAt: r.created_at
+  }));
+}
+
+export async function fetchMessages(supabase, conversationId) {
+  return unwrap(
+    await supabase
+      .from("messages")
+      .select("id, sender_id, body, created_at")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true })
+  );
+}
+
+export async function sendMessage(supabase, conversationId, senderId, body) {
+  return unwrap(
+    await supabase
+      .from("messages")
+      .insert({ conversation_id: conversationId, sender_id: senderId, body })
+      .select("id, sender_id, body, created_at")
+      .single()
+  );
 }

@@ -139,11 +139,21 @@ export function AppProvider({ children }) {
         return;
       }
 
-      const { data: profile } = await supabase
+      let { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", user.id)
         .single();
+      // A transient fetch failure would otherwise commit profile:null and make
+      // an owner/admin look like a plain customer (and bounce them out of their
+      // section). Retry once before giving up.
+      if (profileError) {
+        ({ data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single());
+      }
       if (!active || mySeq !== authSeq.current) return;
 
       let bookings = [];
@@ -160,6 +170,15 @@ export function AppProvider({ children }) {
       }
       if (!active || mySeq !== authSeq.current) return;
 
+      // Membership only counts while it hasn't lapsed: a lapsed 'premium' shows
+      // as 'basic' so the client discount matches the server (which gates on
+      // membership_until). Keeps a stale premium flag from showing a phantom 10%.
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const activeMember =
+        profile?.selected_plan === "premium" &&
+        profile?.membership_until &&
+        profile.membership_until >= todayIso;
+
       setAuth({ user, profile: profile ?? null, loading: false });
       setTransactions(ledger);
       setState((prev) => ({
@@ -168,7 +187,7 @@ export function AppProvider({ children }) {
         stamps: profile?.stamps ?? 0,
         voucher: profile?.voucher ?? false,
         pendingVoucher: profile?.pending_voucher ?? false,
-        selectedPlan: profile?.selected_plan ?? prev.selectedPlan,
+        selectedPlan: activeMember ? "premium" : "basic",
         lang: profile?.lang ?? prev.lang,
         vehicle: { ...prev.vehicle, ...(profile?.vehicle ?? {}) },
         bookings,
@@ -303,6 +322,40 @@ export function AppProvider({ children }) {
     },
     [demo, supabase, auth.user, syncBalances, refreshTransactions]
   );
+
+  // ---- Membership ---------------------------------------------------------
+
+  // Join / renew the monthly membership (premium plan + a renewal date). Charges
+  // the fee from the wallet. Server-defined fee; demo mirrors it locally.
+  const MEMBERSHIP_FEE = 199000;
+  const startMembership = useCallback(async () => {
+    if (demo) {
+      let ok = false;
+      setState((prev) => {
+        if (prev.funds < MEMBERSHIP_FEE) return prev;
+        ok = true;
+        return { ...prev, funds: prev.funds - MEMBERSHIP_FEE, selectedPlan: "premium" };
+      });
+      return ok;
+    }
+    if (!supabase || !auth.user) return false;
+    try {
+      const res = await supabase.rpc("start_membership");
+      if (res.error) throw res.error;
+      const { funds, membership_until } = res.data ?? {};
+      setState((prev) => ({ ...prev, funds: funds ?? prev.funds, selectedPlan: "premium" }));
+      setAuth((prev) =>
+        prev.profile
+          ? { ...prev, profile: { ...prev.profile, funds, selected_plan: "premium", membership_until } }
+          : prev
+      );
+      await refreshTransactions();
+      return true;
+    } catch (error) {
+      console.error("[washgo] start_membership failed", error);
+      return false;
+    }
+  }, [demo, supabase, auth.user, refreshTransactions]);
 
   // ---- Bookings -----------------------------------------------------------
 
@@ -592,7 +645,27 @@ export function AppProvider({ children }) {
   }, [demo]);
 
   const signOut = useCallback(async () => {
-    if (supabase) await supabase.auth.signOut();
+    // scope:"global" revokes the refresh token everywhere, not just this tab, so
+    // a stale session can't be reused after sign-out. Wrapped so a network error
+    // on the revoke call doesn't skip the local cleanup below.
+    try {
+      if (supabase) await supabase.auth.signOut({ scope: "global" });
+    } catch (error) {
+      console.error("[washgo] sign-out revoke failed; clearing locally", error);
+    }
+    // Drop our own cached app state so the next user doesn't inherit it.
+    if (typeof window !== "undefined") {
+      try {
+        Object.keys(window.localStorage)
+          .filter((key) => key.startsWith("washgo:"))
+          .forEach((key) => window.localStorage.removeItem(key));
+      } catch {
+        /* ignore quota / private-mode errors */
+      }
+    }
+    // Clear auth state explicitly rather than relying solely on the SIGNED_OUT
+    // event firing — otherwise a failed revoke could leave the UI "signed in".
+    setAuth({ user: null, profile: null, loading: false });
     setTransactions([]);
     setState((prev) => ({ ...(demo ? initialState : blankState()), lang: prev.lang }));
   }, [supabase, demo]);
@@ -611,6 +684,21 @@ export function AppProvider({ children }) {
     },
     [supabase, auth.user]
   );
+
+  // Apply to become a car-wash owner. The RPC flips owner_status to 'pending';
+  // we re-read the profile so the account UI reflects it immediately.
+  const applyForOwner = useCallback(async () => {
+    if (!supabase || !auth.user) return { error: "Not signed in" };
+    const { error } = await supabase.rpc("apply_for_owner");
+    if (error) return { error: error.message };
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", auth.user.id)
+      .single();
+    if (data) setAuth((prev) => ({ ...prev, profile: data }));
+    return { error: null };
+  }, [supabase, auth.user]);
 
   const uploadAvatar = useCallback(
     async (file) => {
@@ -642,10 +730,12 @@ export function AppProvider({ children }) {
       signOut,
       updateProfile,
       uploadAvatar,
+      applyForOwner,
       t,
       setLang,
       setSelectedPlan,
       topUpFunds,
+      startMembership,
       setVehicle,
       toggleService,
       setDate,
@@ -670,10 +760,12 @@ export function AppProvider({ children }) {
       signOut,
       updateProfile,
       uploadAvatar,
+      applyForOwner,
       t,
       setLang,
       setSelectedPlan,
       topUpFunds,
+      startMembership,
       setVehicle,
       toggleService,
       setDate,
