@@ -360,11 +360,12 @@ export function AppProvider({ children }) {
   // ---- Bookings -----------------------------------------------------------
 
   const confirmBooking = useCallback(
-    async (shopId) => {
+    async (shopId, serviceIdsArg) => {
       if (demo) {
         let ok = false;
         setState((prev) => {
-          const baseTotal = getTotal(prev.selectedPlan, prev.selectedServices);
+          const ids = serviceIdsArg ?? prev.selectedServices;
+          const baseTotal = getTotal(prev.selectedPlan, ids);
           if (!baseTotal) return prev;
           const redeeming = Boolean(prev.pendingVoucher && prev.voucher);
           const charge = redeeming ? 0 : baseTotal;
@@ -381,7 +382,7 @@ export function AppProvider({ children }) {
               (key) => copy[prev.lang][key] ?? copy.en[key] ?? key
             ),
             time: prev.selectedTime,
-            services: [...prev.selectedServices],
+            services: [...ids],
             total: charge,
             plan: prev.selectedPlan,
             freeWash: redeeming,
@@ -413,7 +414,7 @@ export function AppProvider({ children }) {
 
       // Backend
       if (!auth.user) return false;
-      const serviceIds = state.selectedServices;
+      const serviceIds = serviceIdsArg ?? state.selectedServices;
       if (!serviceIds.length) return false;
       const useVoucher = Boolean(state.pendingVoucher && state.voucher);
       try {

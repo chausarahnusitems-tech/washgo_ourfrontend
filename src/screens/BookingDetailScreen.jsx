@@ -54,6 +54,15 @@ export function BookingDetailScreen({ bookingId }) {
   const status = getBookingStatus(booking);
   const isUpcoming = status === "upcoming";
   const shop = getCurrentShop(booking.shopId);
+  // This shop's own bookable menu (fallback to the standard catalogue).
+  const STANDARD_SERVICE_IDS = ["exterior", "interior", "detailing", "wax"];
+  const allServices = catalog.services ?? [];
+  const ownServices = (shop?.services ?? [])
+    .map((id) => allServices.find((s) => s.id === id))
+    .filter(Boolean);
+  const bookableServices = ownServices.length
+    ? ownServices
+    : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id));
   const statusLabel = {
     upcoming: t("statusUpcoming"),
     completed: t("statusCompleted"),
@@ -189,7 +198,7 @@ export function BookingDetailScreen({ bookingId }) {
           <h2 className="font-display text-base font-black">{t("chooseServices")}</h2>
           {editing ? (
             <div className="mt-3 grid gap-2">
-              {catalog.services.map((service) => {
+              {bookableServices.map((service) => {
                 const selected = draft.services.includes(service.id);
                 return (
                   <button

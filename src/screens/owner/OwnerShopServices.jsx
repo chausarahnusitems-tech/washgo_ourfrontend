@@ -12,6 +12,7 @@ import {
 import { cx } from "../../lib/cx.js";
 import { Button } from "../../components/ui/Button.jsx";
 import { formatVnd } from "./format.js";
+import { SERVICE_OPTION_GROUPS, CUSTOM_SERVICE, SERVICE_PRICE_BY_NAME } from "../../data/serviceOptions.js";
 
 // Two parts: pick from the shared catalogue (persisted to shop_services), and
 // add fully custom services (name + price, optionally flagged as an "offer").
@@ -29,6 +30,21 @@ export function OwnerShopServices({ shop, saveServices }) {
   const [price, setPrice] = useState("");
   const [isOffer, setIsOffer] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [picked, setPicked] = useState("");
+
+  // Pick a service from the common (WÜRTH-style) menu to pre-fill name + price,
+  // or "Other" to type a fully custom one. The fields stay editable after.
+  function onPickSuggestion(value) {
+    setPicked(value);
+    if (!value) return;
+    if (value === CUSTOM_SERVICE) {
+      setName("");
+      return;
+    }
+    setName(value);
+    const suggested = SERVICE_PRICE_BY_NAME[value];
+    if (suggested != null) setPrice(String(suggested));
+  }
 
   useEffect(() => {
     fetchCustomServices(supabase, shop.id)
@@ -71,6 +87,7 @@ export function OwnerShopServices({ shop, saveServices }) {
       setName("");
       setPrice("");
       setIsOffer(false);
+      setPicked("");
     } catch (err) {
       console.error("[washgo] add custom service failed", err);
       window.alert(err?.message || "Could not add the service.");
@@ -150,7 +167,8 @@ export function OwnerShopServices({ shop, saveServices }) {
           Your own services
         </h3>
         <p className="mt-1 mb-3 text-sm text-neutral-500">
-          Add services unique to your shop, and flag any that are special offers.
+          Pick from the common menu to pre-fill the name and a suggested price, or add your own.
+          Flag any that are special offers.
         </p>
 
         {custom.length > 0 && (
@@ -184,7 +202,31 @@ export function OwnerShopServices({ shop, saveServices }) {
           </ul>
         )}
 
-        <div className="grid gap-3 rounded-2xl border border-black/10 bg-white p-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
+        <div className="rounded-2xl border border-black/10 bg-white p-4">
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-neutral-500">
+              Choose a common service
+            </span>
+            <select
+              value={picked}
+              onChange={(e) => onPickSuggestion(e.target.value)}
+              className="min-h-11 rounded-2xl border border-black/10 bg-white px-3 text-sm outline-none focus:border-wash-500"
+            >
+              <option value="">Pick from the menu…</option>
+              {SERVICE_OPTION_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((o) => (
+                    <option key={o.name} value={o.name}>
+                      {o.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              <option value={CUSTOM_SERVICE}>Other (type your own)…</option>
+            </select>
+          </label>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
           <label className="grid gap-1">
             <span className="text-xs font-black uppercase tracking-wide text-neutral-500">Service name</span>
             <input
@@ -213,6 +255,7 @@ export function OwnerShopServices({ shop, saveServices }) {
           <Button onClick={addService} disabled={adding || !name.trim() || price === ""} className="min-h-11">
             {adding ? "…" : "Add service"}
           </Button>
+          </div>
         </div>
       </section>
     </div>
