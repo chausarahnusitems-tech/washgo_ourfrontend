@@ -476,60 +476,62 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
         {activeId ? (
           <>
             <div className="border-b border-black/10 bg-white">
-              <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3">
-                <button type="button" onClick={() => setActiveId(null)} className="sm:hidden" aria-label="Back">
-                  <MessageCircle className="h-5 w-5 text-neutral-500" />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate font-display text-base font-black">{convLabel(activeConv ?? {}, uid, t)}</h3>
-                  {activeConv?.problemTags?.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {activeConv.problemTags.map((slug) => (
-                        <span
-                          key={slug}
-                          className="rounded-full bg-neutral-100 px-2 py-0.5 text-[0.65rem] font-bold text-neutral-600"
-                        >
-                          {tagLabel(slug, t)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Lifecycle actions */}
-                {!isClosed
-                  ? canClose && (
-                      <button type="button" onClick={onCloseChat} className={headerBtn}>
-                        {t("closeChat")}
-                      </button>
-                    )
-                  : canManage && (
-                      <>
-                        {isArchived ? (
-                          <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
-                            <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
-                            {t("unarchiveChat")}
-                          </button>
-                        ) : (
-                          <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
-                            <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-                            {t("archiveChat")}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={onDeleteChat}
-                          className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                          {t("deleteChat")}
+              <div className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setActiveId(null)} className="sm:hidden" aria-label="Back">
+                    <MessageCircle className="h-5 w-5 text-neutral-500" />
+                  </button>
+                  <h3 className="min-w-0 flex-1 truncate font-display text-base font-black">
+                    {convLabel(activeConv ?? {}, uid, t)}
+                  </h3>
+                  {/* Lifecycle actions */}
+                  {!isClosed
+                    ? canClose && (
+                        <button type="button" onClick={onCloseChat} className={headerBtn}>
+                          {t("closeChat")}
                         </button>
-                      </>
-                    )}
+                      )
+                    : canManage && (
+                        <>
+                          {isArchived ? (
+                            <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
+                              <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
+                              {t("unarchiveChat")}
+                            </button>
+                          ) : (
+                            <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
+                              <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                              {t("archiveChat")}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={onDeleteChat}
+                            className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                            {t("deleteChat")}
+                          </button>
+                        </>
+                      )}
+                </div>
+                {activeConv?.problemTags?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {activeConv.problemTags.map((slug) => (
+                      <span
+                        key={slug}
+                        className="rounded-full bg-neutral-100 px-2 py-0.5 text-[0.65rem] font-bold text-neutral-600"
+                      >
+                        {tagLabel(slug, t)}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-3xl px-4 py-4">
+              <div className="px-4 py-4">
                 {messages.map((m, i) => {
                   const prev = messages[i - 1];
                   const next = messages[i + 1];
@@ -565,7 +567,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                       <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
                         <div
                           className={cx(
-                            "flex max-w-[80%] flex-col overflow-hidden rounded-2xl text-sm",
+                            "flex max-w-[85%] flex-col overflow-hidden rounded-2xl text-sm sm:max-w-md",
                             isVisualMedia ? "p-1" : "px-3 py-2",
                             mine ? "bg-wash-500 text-white" : "bg-white text-ink shadow-sm ring-1 ring-black/5",
                             endGroup && (mine ? "rounded-br-md" : "rounded-bl-md")
@@ -637,7 +639,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
               </>
             ) : recording ? (
               <div className="border-t border-black/10 bg-white">
-                <div className="mx-auto flex w-full max-w-3xl items-center gap-3 p-3">
+                <div className="flex items-center gap-3 p-3">
                   <span className="flex items-center gap-2 text-sm font-bold text-red-600">
                     <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
                     {t("recording")} {mmss(recElapsed)}
@@ -663,7 +665,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
               </div>
             ) : (
               <form onSubmit={onSend} className="border-t border-black/10 bg-white">
-                <div className="mx-auto w-full max-w-3xl p-3">
+                <div className="p-3">
                   {pendingFile && (
                     <div className="mb-2 flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600">
                       <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
