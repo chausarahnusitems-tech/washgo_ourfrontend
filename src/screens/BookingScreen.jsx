@@ -113,6 +113,22 @@ export function BookingScreen({ shopId }) {
     );
   }
 
+  // Bookable menu = this shop's own services (e.g. Würth Go shows its WÜRTH
+  // menu); fall back to the standard catalogue for shops with none attached.
+  const STANDARD_SERVICE_IDS = ["exterior", "interior", "detailing", "wax"];
+  const allServices = catalog.services ?? [];
+  const ownServices = (shop.services ?? [])
+    .map((id) => allServices.find((s) => s.id === id))
+    .filter(Boolean);
+  const bookableServices = ownServices.length
+    ? ownServices
+    : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id));
+  // Only price/book selections this shop actually offers — a stale global pick
+  // from another shop shouldn't carry over here.
+  const effectiveSelected = state.selectedServices.filter((id) =>
+    bookableServices.some((s) => s.id === id)
+  );
+
   const onConfirm = async () => {
     if (submitting) return;
     if (requireAuth) {
@@ -121,7 +137,7 @@ export function BookingScreen({ shopId }) {
     }
     setSubmitting(true);
     setBookError(null);
-    const ok = await confirmBooking(shop.id);
+    const ok = await confirmBooking(shop.id, effectiveSelected);
     if (ok) {
       router.push("/confirmation");
       return; // leave the button disabled while we navigate away
@@ -130,10 +146,10 @@ export function BookingScreen({ shopId }) {
     setSubmitting(false); // re-enable only if the booking failed
   };
 
-  const selectedServices = getSelectedServices(state.selectedServices);
-  const subtotal = getSubtotal(state.selectedServices);
-  const discount = getDiscount(state.selectedPlan, state.selectedServices);
-  const total = getTotal(state.selectedPlan, state.selectedServices);
+  const selectedServices = getSelectedServices(effectiveSelected);
+  const subtotal = getSubtotal(effectiveSelected);
+  const discount = getDiscount(state.selectedPlan, effectiveSelected);
+  const total = getTotal(state.selectedPlan, effectiveSelected);
 
   // A pending free-wash voucher makes the booking free; otherwise the wallet
   // must cover the total.
@@ -255,7 +271,7 @@ export function BookingScreen({ shopId }) {
           <h2 className="font-display text-base font-black">{t("chooseServices")}</h2>
           <p className="mt-1 text-xs text-neutral-500">{t("serviceHint")}</p>
           <div className="mt-3 grid gap-2">
-            {catalog.services.map((service) => {
+            {bookableServices.map((service) => {
               const selected = state.selectedServices.includes(service.id);
               return (
                 <button

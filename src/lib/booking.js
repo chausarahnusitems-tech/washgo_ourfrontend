@@ -145,16 +145,28 @@ export function getSelectedDateLabel(selectedDate, t) {
   return `${t(fallback.label)} ${fallback.number} ${fallback.sub}`;
 }
 
+// Fold accents/diacritics so search is forgiving: "wurth" matches "Würth",
+// "an phu" matches "An Phú", "thu duc" matches "Thủ Đức". Strips combining marks
+// (NFD) and maps Vietnamese đ/Đ (which don't decompose) to d.
+export function foldAccents(value) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
+
 export function getVisibleShops(search, serviceId = null) {
   const { shops } = getCatalog();
-  const needle = (search ?? "").trim().toLowerCase();
+  const needle = foldAccents((search ?? "").trim());
 
   return shops.filter((shop) => {
     if (serviceId && !shop.services.includes(serviceId)) return false;
     if (!needle) return true;
-    return `${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`
-      .toLowerCase()
-      .includes(needle);
+    return foldAccents(`${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`).includes(
+      needle
+    );
   });
 }
 

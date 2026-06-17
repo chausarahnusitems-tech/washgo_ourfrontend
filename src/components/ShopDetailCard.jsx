@@ -224,6 +224,12 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
             <div className="mt-2">
               <ServiceChips shop={shop} t={t} />
             </div>
+            {shop.notes ? (
+              <>
+                <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("aboutShop")}</h2>
+                <p className="mt-2 text-sm text-neutral-600">{shop.notes}</p>
+              </>
+            ) : null}
           </>
         )}
 
