@@ -13,5 +13,8 @@
     "additionalDirectories": [
       "/tmp"
     ]
+  },
+  "enabledPlugins": {
+    "supergoal@supergoal": true
   }
 }

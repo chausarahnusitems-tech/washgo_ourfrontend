@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import {
   Archive,
   ArchiveRestore,
+  Flag,
   Headset,
   Info,
   MessageCircle,
@@ -26,6 +27,7 @@ import {
   fetchMessages,
   markConversationRead,
   openConversation,
+  reportConversation,
   sendMessage,
   setConversationArchived,
   submitConversationReview,
@@ -36,9 +38,11 @@ import { parseIsoDate } from "../../lib/calendar.js";
 import { tagLabel } from "./problemTags.js";
 import { SupportTagPicker } from "./SupportTagPicker.jsx";
 import { ConversationReviewPrompt } from "./ConversationReviewPrompt.jsx";
+import { ReportDialog } from "./ReportDialog.jsx";
 import { VoiceMessage } from "./VoiceMessage.jsx";
 
 const VIDEO_MAX_BYTES = 50 * 1024 * 1024; // 50MB cap for inline video uploads
+const IMAGE_MAX_BYTES = 25 * 1024 * 1024; // 25MB cap for image uploads (incl. pasted)
 const GROUP_GAP_MS = 5 * 60 * 1000; // messages >5min apart start a new visual group
 // Preferred recording container/codec, in order — first the browser supports wins.
 const AUDIO_MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
@@ -147,6 +151,10 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [reviewBusy, setReviewBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
+  const [showReport, setShowReport] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  // Object-URL thumbnail for a staged image attachment (revoked on change).
+  const [previewUrl, setPreviewUrl] = useState(null);
   // A deep-linked thread (e.g. from the reviews page) may not be in the current
   // filtered list — fetch it on its own so the header/actions still render.
   const [extraConv, setExtraConv] = useState(null);
@@ -156,6 +164,12 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [unreadAnchor, setUnreadAnchor] = useState(null);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
+  const inputRef = useRef(null);
+  const prevSendingRef = useRef(false);
+  // Refocus the composer only after a TEXT send (not a voice note), and only if
+  // the user is still on the thread they sent from.
+  const refocusAfterSendRef = useRef(false);
+  const sentConvIdRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -182,6 +196,9 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   // details panel. The thread creator (customer) doesn't.
   const canSeeDetails =
     !!activeConv && (isAdmin || (activeConv.kind === "shop" && activeConv.createdBy && activeConv.createdBy !== uid));
+  // Either party of a customer<->owner (shop) chat can report it to the admins.
+  // Admins are the recipients, so they don't see a report button.
+  const canReport = !!activeConv && activeConv.kind === "shop" && !isAdmin;
 
   const activeConvs = useMemo(() => sortActive(conversations.filter((c) => !c.archived)), [conversations]);
   const archivedConvs = useMemo(
@@ -351,15 +368,88 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     };
   }, []);
 
-  function onPickFile(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  // Paste an image straight into the composer. Listens at document level so it
+  // works whether or not the text input is focused; non-image pastes (e.g. text)
+  // are left untouched so normal pasting still works.
+  useEffect(() => {
+    if (!activeId || isClosed) return undefined;
+    function onPaste(e) {
+      // Don't hijack pastes aimed at a modal (e.g. the report dialog's textarea).
+      if (e.target instanceof Element && e.target.closest('[role="dialog"]')) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      // Index loop, not for..of/Array.from: DataTransferItemList isn't reliably
+      // iterable (throws on iOS Safari).
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === "file" && (item.type || "").startsWith("image/")) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          e.preventDefault();
+          const ext = (file.type.split("/")[1] || "png").replace(/[^a-z0-9]/gi, "");
+          const named = file.name
+            ? file
+            : new File([file], `pasted-${Date.now()}.${ext}`, { type: file.type });
+          attachFile(named); // shared validation path (size caps) with the picker
+          return;
+        }
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [activeId, isClosed]);
+
+  // Live thumbnail for a staged image attachment; revoke the object URL when the
+  // staged file changes or clears to avoid leaking blob URLs.
+  useEffect(() => {
+    if (pendingFile && (pendingFile.type || "").startsWith("image/")) {
+      const url = URL.createObjectURL(pendingFile);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPreviewUrl(null);
+    return undefined;
+  }, [pendingFile]);
+
+  // Keep focus on the composer after a TEXT message sends, so you can keep typing
+  // without tapping back into the box. Only fires on the sending→idle edge (the
+  // input is briefly disabled mid-send), never on first opening a thread, and
+  // not after a voice note (the user never touched the keyboard) or once you've
+  // switched to a different thread mid-send.
+  useEffect(() => {
+    if (
+      refocusAfterSendRef.current &&
+      prevSendingRef.current &&
+      !sending &&
+      activeId &&
+      !isClosed &&
+      sentConvIdRef.current === activeId
+    ) {
+      inputRef.current?.focus();
+    }
+    if (!sending) refocusAfterSendRef.current = false;
+    prevSendingRef.current = sending;
+  }, [sending, activeId, isClosed]);
+
+  // Validate + stage a file for sending (shared by the picker and image paste).
+  function attachFile(file) {
     if (!file) return;
-    if ((file.type || "").startsWith("video/") && file.size > VIDEO_MAX_BYTES) {
+    const type = file.type || "";
+    if (type.startsWith("video/") && file.size > VIDEO_MAX_BYTES) {
       window.alert(t("videoTooLarge"));
       return;
     }
+    if (type.startsWith("image/") && file.size > IMAGE_MAX_BYTES) {
+      window.alert(t("imageTooLarge"));
+      return;
+    }
     setPendingFile(file);
+  }
+
+  function onPickFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    attachFile(file);
   }
 
   async function onSend(event) {
@@ -369,6 +459,8 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     if ((!text && !file) || !activeId || !uid || isClosed) return;
     setBody("");
     setPendingFile(null);
+    refocusAfterSendRef.current = true; // a text-composer send → keep focus after
+    sentConvIdRef.current = activeId;
     setSending(true);
     try {
       let attachment = null;
@@ -378,7 +470,8 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     } catch (err) {
       console.error("[washgo] send message failed", err);
       setBody(text);
-      setPendingFile(file);
+      // Don't clobber an image pasted while this send was in flight.
+      setPendingFile((cur) => cur ?? file);
     } finally {
       setSending(false);
     }
@@ -542,6 +635,23 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     }
   }
 
+  // Report the active shop chat to the admins. Returns true on success so the
+  // dialog can switch to its confirmation view.
+  async function onReport(reason) {
+    if (!activeConv) return false;
+    setReportBusy(true);
+    try {
+      await reportConversation(supabase, activeConv.id, reason);
+      return true;
+    } catch (err) {
+      console.error("[washgo] report conversation failed", err);
+      window.alert(err?.message || "Report failed");
+      return false;
+    } finally {
+      setReportBusy(false);
+    }
+  }
+
   if (!uid) {
     return (
       <div className="grid h-full place-items-center p-8 text-center text-sm text-neutral-500">
@@ -686,10 +796,10 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
             <button
               type="button"
               onClick={() => setShowTagPicker(true)}
-              className="inline-flex items-center gap-1 rounded-full bg-wash-50 px-3 py-1.5 text-xs font-black text-wash-600"
+              className="inline-flex items-center gap-1.5 rounded-full bg-wash-600 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-wash-700"
             >
               <Headset className="h-4 w-4" aria-hidden="true" />
-              Support
+              {t("contactSupport")}
             </button>
           )}
         </div>
@@ -743,6 +853,13 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                     >
                       <Info className="h-3.5 w-3.5" aria-hidden="true" />
                       {t("details")}
+                    </button>
+                  )}
+                  {/* Report a customer<->owner chat to the admins (either party). */}
+                  {canReport && (
+                    <button type="button" onClick={() => setShowReport(true)} className={headerBtn}>
+                      <Flag className="h-3.5 w-3.5" aria-hidden="true" />
+                      {t("reportChat")}
                     </button>
                   )}
                   {/* Lifecycle actions. On a closed thread: admins can archive
@@ -945,15 +1062,32 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
             ) : (
               <form onSubmit={onSend} className="border-t border-black/10 bg-white">
                 <div className="p-3">
-                  {pendingFile && (
-                    <div className="mb-2 flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600">
-                      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span className="max-w-[12rem] truncate">{pendingFile.name}</span>
-                      <button type="button" onClick={() => setPendingFile(null)} aria-label="Remove attachment">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
+                  {pendingFile &&
+                    (previewUrl ? (
+                      <div className="relative mb-2 inline-block">
+                        <img
+                          src={previewUrl}
+                          alt={pendingFile.name || t("attachment")}
+                          className="h-16 w-16 rounded-xl object-cover ring-1 ring-black/10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setPendingFile(null)}
+                          aria-label={t("removeAttachment")}
+                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-ink text-white shadow"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mb-2 flex w-max items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600">
+                        <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="max-w-[12rem] truncate">{pendingFile.name}</span>
+                        <button type="button" onClick={() => setPendingFile(null)} aria-label={t("removeAttachment")}>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
                   <div className="flex items-center gap-2">
                     <input
                       ref={fileRef}
@@ -981,6 +1115,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                       <Mic className="h-5 w-5" aria-hidden="true" />
                     </button>
                     <input
+                      ref={inputRef}
                       value={body}
                       onChange={(e) => setBody(e.target.value)}
                       placeholder={sending ? t("uploading") : "Type a message…"}
@@ -1016,6 +1151,12 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       {showTagPicker && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
           <SupportTagPicker onStart={confirmStartSupport} onCancel={() => setShowTagPicker(false)} busy={starting} />
+        </div>
+      )}
+
+      {showReport && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <ReportDialog onSubmit={onReport} onCancel={() => setShowReport(false)} busy={reportBusy} />
         </div>
       )}
     </div>
