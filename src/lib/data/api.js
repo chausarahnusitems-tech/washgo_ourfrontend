@@ -585,7 +585,13 @@ export async function fetchConversations(supabase, kind = null) {
   if (kind) query = query.eq("kind", kind);
   const rows = unwrap(await query);
 
-  const creatorIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))];
+  // Drop conversations the caller hid from their own list ("delete for me"). The
+  // hidden rows are RLS-scoped to the caller, so this select returns only theirs.
+  const hiddenRows = unwrap(await supabase.from("conversation_hidden").select("conversation_id"));
+  const hiddenSet = new Set(hiddenRows.map((h) => h.conversation_id));
+  const visible = rows.filter((r) => !hiddenSet.has(r.id));
+
+  const creatorIds = [...new Set(visible.map((r) => r.created_by).filter(Boolean))];
   let byId = {};
   if (creatorIds.length) {
     const people = unwrap(
@@ -594,7 +600,7 @@ export async function fetchConversations(supabase, kind = null) {
     byId = Object.fromEntries(people.map((p) => [p.id, p]));
   }
 
-  return rows.map((r) => ({
+  return visible.map((r) => ({
     id: r.id,
     kind: r.kind,
     shopId: r.shop_id,
@@ -704,7 +710,14 @@ export async function setConversationArchived(supabase, conversationId, archived
   );
 }
 
-// Hard-delete a thread (cascades messages/participants/reviews). Admin or creator.
+// Hide a thread from the caller's own list ("delete for me"). Non-destructive —
+// the thread, messages and review stay for the other party and for records.
+export async function hideConversation(supabase, conversationId) {
+  return unwrap(await supabase.rpc("hide_conversation", { p_conv: conversationId }));
+}
+
+// Hard purge ("delete for everyone"): admin-only, and the RPC refuses when a
+// review exists. Cascades messages/participants when allowed.
 export async function deleteConversation(supabase, conversationId) {
   return unwrap(await supabase.rpc("delete_conversation", { p_conv: conversationId }));
 }

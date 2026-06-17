@@ -279,6 +279,9 @@ export const copy = {
     // Chat management round 2: archive / delete / reviews / voice
     deleteChat: "Delete chat",
     confirmDeleteChat: "Delete this conversation permanently? This removes all its messages and can't be undone.",
+    confirmHideChat: "Remove this conversation from your list? The other person keeps their copy.",
+    deleteForEveryone: "Delete for everyone",
+    deleteReviewedBlocked: "This conversation has a review, so it can't be deleted for everyone.",
     archiveChat: "Archive",
     unarchiveChat: "Unarchive",
     archived: "Archived",
@@ -577,6 +580,9 @@ export const copy = {
     // Chat management round 2: archive / delete / reviews / voice
     deleteChat: "Xóa cuộc trò chuyện",
     confirmDeleteChat: "Xóa vĩnh viễn cuộc trò chuyện này? Tất cả tin nhắn sẽ bị xóa và không thể khôi phục.",
+    confirmHideChat: "Xóa cuộc trò chuyện này khỏi danh sách của bạn? Người kia vẫn giữ bản sao của họ.",
+    deleteForEveryone: "Xóa cho mọi người",
+    deleteReviewedBlocked: "Cuộc trò chuyện này đã có đánh giá nên không thể xóa cho mọi người.",
     archiveChat: "Lưu trữ",
     unarchiveChat: "Bỏ lưu trữ",
     archived: "Đã lưu trữ",

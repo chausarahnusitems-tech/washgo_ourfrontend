@@ -18,6 +18,7 @@ import { createClient } from "../../lib/supabase/client.js";
 import {
   closeConversation,
   deleteConversation,
+  hideConversation,
   fetchConversationReview,
   fetchConversations,
   fetchMessages,
@@ -361,6 +362,22 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     }
   }
 
+  // Local "delete for me": hide from the caller's list, preserving the thread
+  // (and any review) for the other party and for records.
+  async function onHideChat() {
+    if (!activeConv || !window.confirm(t("confirmHideChat"))) return;
+    const id = activeConv.id;
+    try {
+      await hideConversation(supabase, id);
+      setActiveId((cur) => (cur === id ? null : cur));
+      await reloadList();
+    } catch (err) {
+      console.error("[washgo] hide conversation failed", err);
+    }
+  }
+
+  // Admin-only hard purge ("delete for everyone"). The RPC refuses when a review
+  // exists, so surface that case clearly.
   async function onDeleteChat() {
     if (!activeConv || !window.confirm(t("confirmDeleteChat"))) return;
     const delId = activeConv.id;
@@ -370,6 +387,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       await reloadList();
     } catch (err) {
       console.error("[washgo] delete conversation failed", err);
+      window.alert(/review/i.test(err?.message || "") ? t("deleteReviewedBlocked") : (err?.message || "Delete failed"));
     }
   }
 
@@ -484,36 +502,50 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                   <h3 className="min-w-0 flex-1 truncate font-display text-base font-black">
                     {convLabel(activeConv ?? {}, uid, t)}
                   </h3>
-                  {/* Lifecycle actions */}
-                  {!isClosed
-                    ? canClose && (
-                        <button type="button" onClick={onCloseChat} className={headerBtn}>
-                          {t("closeChat")}
-                        </button>
-                      )
-                    : canManage && (
-                        <>
-                          {isArchived ? (
-                            <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
-                              <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
-                              {t("unarchiveChat")}
-                            </button>
-                          ) : (
-                            <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
-                              <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-                              {t("archiveChat")}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={onDeleteChat}
-                            className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            {t("deleteChat")}
+                  {/* Lifecycle actions. On a closed thread: admins can archive
+                      (global) and hard-purge "for everyone"; everyone else gets a
+                      local "delete from my list". */}
+                  {!isClosed ? (
+                    canClose && (
+                      <button type="button" onClick={onCloseChat} className={headerBtn}>
+                        {t("closeChat")}
+                      </button>
+                    )
+                  ) : (
+                    <>
+                      {canManage &&
+                        (isArchived ? (
+                          <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
+                            <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
+                            {t("unarchiveChat")}
                           </button>
-                        </>
+                        ) : (
+                          <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
+                            <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                            {t("archiveChat")}
+                          </button>
+                        ))}
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={onDeleteChat}
+                          className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("deleteForEveryone")}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={onHideChat}
+                          className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("deleteChat")}
+                        </button>
                       )}
+                    </>
+                  )}
                 </div>
                 {activeConv?.problemTags?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
