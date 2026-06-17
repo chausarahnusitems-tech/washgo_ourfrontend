@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, LayoutDashboard, LogOut, MessageCircle, Star, Store } from "lucide-react";
+import { ArrowLeft, CalendarClock, LayoutDashboard, LogOut, MessageCircle, Star, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
@@ -13,6 +13,7 @@ import { useApp } from "../../lib/AppContext.jsx";
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", href: "/owner", icon: LayoutDashboard },
   { key: "shops", label: "My shops", href: "/owner/shops", icon: Store },
+  { key: "bookings", label: "Bookings", href: "/owner/bookings", icon: CalendarClock },
   { key: "messages", label: "Messages", href: "/owner/messages", icon: MessageCircle },
   { key: "reviews", label: "Reviews", href: "/owner/reviews", icon: Star }
 ];
@@ -82,13 +83,13 @@ export function OwnerNav() {
 
       {/* Mobile top bar */}
       <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-black/10 bg-white/95 px-4 py-2.5 backdrop-blur lg:hidden">
-        <Link href="/owner" className="inline-flex items-center">
+        <Link href="/owner" className="inline-flex shrink-0 items-center">
           <img src={svgIcons.washgoLogo} alt="Washgo" className="h-7 w-auto object-contain" />
           <span className="ml-2 rounded-full bg-ink px-2 py-0.5 text-[0.55rem] font-black uppercase tracking-wide text-white">
             Owner
           </span>
         </Link>
-        <nav aria-label="Owner navigation" className="ml-auto flex items-center gap-1">
+        <nav aria-label="Owner navigation" className="ml-auto flex items-center gap-1 overflow-x-auto">
           {NAV_ITEMS.map(({ key, label, href, icon: LucideIcon }) => {
             const active = isActive(pathname, href);
             return (

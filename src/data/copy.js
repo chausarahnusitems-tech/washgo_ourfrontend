@@ -172,6 +172,11 @@ export const copy = {
     bookings: "Bookings",
     noBookings: "No booking yet. Choose a shop to start.",
     upcomingBookings: "Upcoming Bookings",
+    upcomingBookingsSub: "Bookings across your shops, soonest first. Open the chat to message the customer.",
+    noServices: "No services",
+    openChat: "Open chat",
+    loading: "Loading…",
+    loadError: "Couldn't load bookings. Please try again.",
     historyTitle: "History",
     noUpcoming: "No upcoming bookings.",
     bookingsSummaryNone: "You have no upcoming bookings",
@@ -314,7 +319,26 @@ export const copy = {
     recording: "Recording…",
     stopRecording: "Send",
     cancelRecording: "Cancel",
-    micDenied: "Microphone access was blocked. Enable it in your browser to record voice messages."
+    micDenied: "Microphone access was blocked. Enable it in your browser to record voice messages.",
+    // Unread tracking + conversation-list previews
+    unread: "Unread",
+    unreadConversation: "Unread conversation",
+    unreadMessages: "Unread messages",
+    emptyThread: "Select a conversation to start chatting.",
+    statusOpen: "Open",
+    statusClosed: "Closed",
+    previewPhoto: "Photo",
+    previewVideo: "Video",
+    previewVoice: "Voice message",
+    previewAttachment: "Attachment",
+    // Issue details panel (support side)
+    details: "Details",
+    issueDetails: "Issue details",
+    detailSubject: "Subject",
+    detailStatus: "Status",
+    detailPerson: "Raised by",
+    detailCreated: "Created",
+    detailCategory: "Category"
   },
   vi: {
     signInToContinue: "Đăng nhập để tiếp tục",
@@ -489,6 +513,11 @@ export const copy = {
     bookings: "Lịch hẹn",
     noBookings: "Chưa có lịch hẹn. Hãy chọn một tiệm để bắt đầu.",
     upcomingBookings: "Lịch Hẹn Sắp Tới",
+    upcomingBookingsSub: "Lịch hẹn tại các tiệm của bạn, sắp tới trước. Mở cuộc trò chuyện để nhắn cho khách.",
+    noServices: "Không có dịch vụ",
+    openChat: "Mở cuộc trò chuyện",
+    loading: "Đang tải…",
+    loadError: "Không thể tải lịch hẹn. Vui lòng thử lại.",
     historyTitle: "Lịch Sử",
     noUpcoming: "Không có lịch hẹn sắp tới.",
     bookingsSummaryNone: "Bạn chưa có lịch hẹn sắp tới",
@@ -631,6 +660,25 @@ export const copy = {
     recording: "Đang ghi âm…",
     stopRecording: "Gửi",
     cancelRecording: "Hủy",
-    micDenied: "Quyền truy cập micro bị chặn. Hãy bật trong trình duyệt để ghi âm tin nhắn thoại."
+    micDenied: "Quyền truy cập micro bị chặn. Hãy bật trong trình duyệt để ghi âm tin nhắn thoại.",
+    // Unread tracking + conversation-list previews
+    unread: "Chưa đọc",
+    unreadConversation: "Cuộc trò chuyện chưa đọc",
+    unreadMessages: "Tin nhắn chưa đọc",
+    emptyThread: "Chọn một cuộc trò chuyện để bắt đầu.",
+    statusOpen: "Đang mở",
+    statusClosed: "Đã đóng",
+    previewPhoto: "Hình ảnh",
+    previewVideo: "Video",
+    previewVoice: "Tin nhắn thoại",
+    previewAttachment: "Tệp đính kèm",
+    // Issue details panel (support side)
+    details: "Chi tiết",
+    issueDetails: "Chi tiết vấn đề",
+    detailSubject: "Chủ đề",
+    detailStatus: "Trạng thái",
+    detailPerson: "Người gửi",
+    detailCreated: "Đã tạo",
+    detailCategory: "Danh mục"
   }
 };
