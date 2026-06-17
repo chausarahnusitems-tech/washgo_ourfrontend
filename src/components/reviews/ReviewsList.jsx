@@ -1,6 +1,7 @@
 "use client";
 
-import { Star } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Star } from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { cx } from "../../lib/cx.js";
 import { tagLabel } from "../chat/problemTags.js";
@@ -25,8 +26,10 @@ function Stars({ rating }) {
 }
 
 // Shared list of post-chat reviews. Used by the admin (all reviews) and owner
-// (their shop chats) screens — they pass already-scoped `reviews`.
-export function ReviewsList({ reviews, loading, emptyText }) {
+// (their shop chats) screens — they pass already-scoped `reviews`. When
+// `chatHrefBase` is provided, each card links to its conversation
+// (`<base>?c=<id>`) so the reviewer's chat can be opened directly.
+export function ReviewsList({ reviews, loading, emptyText, chatHrefBase }) {
   const { t, lang } = useApp();
   const locale = lang === "vi" ? "vi-VN" : "en-US";
 
@@ -45,16 +48,19 @@ export function ReviewsList({ reviews, loading, emptyText }) {
       {reviews.map((r) => {
         const subject = r.kind === "shop" ? r.shopName || "Shop" : t("supportThread");
         const who = r.reviewerName || r.reviewerEmail || "User";
-        return (
-          <li key={r.id} className="rounded-2xl border border-black/5 bg-white p-4">
+        const href = chatHrefBase && r.conversationId ? `${chatHrefBase}?c=${r.conversationId}` : null;
+
+        const inner = (
+          <>
             <div className="flex items-center justify-between gap-3">
               <Stars rating={r.rating} />
-              <span className="text-xs text-neutral-400">
+              <span className="flex items-center gap-1 text-xs text-neutral-400">
                 {new Date(r.createdAt).toLocaleDateString(locale, {
                   month: "short",
                   day: "numeric",
                   year: "numeric"
                 })}
+                {href && <ChevronRight className="h-4 w-4 text-neutral-300" aria-hidden="true" />}
               </span>
             </div>
             {r.comment && <p className="mt-2 text-sm text-ink">{r.comment}</p>}
@@ -77,6 +83,21 @@ export function ReviewsList({ reviews, loading, emptyText }) {
                   </span>
                 ))}
               </div>
+            )}
+          </>
+        );
+
+        return (
+          <li key={r.id}>
+            {href ? (
+              <Link
+                href={href}
+                className="block rounded-2xl border border-black/5 bg-white p-4 transition hover:border-wash-200 hover:bg-wash-50/50"
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div className="rounded-2xl border border-black/5 bg-white p-4">{inner}</div>
             )}
           </li>
         );

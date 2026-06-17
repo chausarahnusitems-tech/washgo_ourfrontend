@@ -17,7 +17,7 @@ export function AdminReviewsScreen() {
           Feedback left after support and shop chats were resolved.
         </p>
       </header>
-      <ReviewsList reviews={reviews} loading={loading} />
+      <ReviewsList reviews={reviews} loading={loading} chatHrefBase="/admin/messages" />
     </div>
   );
 }

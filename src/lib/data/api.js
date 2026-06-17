@@ -600,16 +600,23 @@ export async function fetchConversations(supabase, kind = null) {
     byId = Object.fromEntries(people.map((p) => [p.id, p]));
   }
 
-  return visible.map((r) => ({
+  return visible.map((r) => mapConversationRow(r, byId[r.created_by]));
+}
+
+// Shape one conversation row (+ its creator profile) into the UI object. Shared
+// by the list fetch and the single-conversation fetch so they stay in sync.
+// `person` is the created_by profile ({full_name,email,role}) or undefined.
+function mapConversationRow(r, person) {
+  return {
     id: r.id,
     kind: r.kind,
     shopId: r.shop_id,
     shopName: r.shops?.name ?? null,
     createdBy: r.created_by ?? null,
-    creatorName: byId[r.created_by]?.full_name ?? null,
-    creatorEmail: byId[r.created_by]?.email ?? null,
+    creatorName: person?.full_name ?? null,
+    creatorEmail: person?.email ?? null,
     // Requester role lets the support inbox label a thread "Name · Customer/Owner".
-    creatorRole: byId[r.created_by]?.role ?? null,
+    creatorRole: person?.role ?? null,
     status: r.status ?? "open",
     closedAt: r.closed_at ?? null,
     closedBy: r.closed_by ?? null,
@@ -617,7 +624,31 @@ export async function fetchConversations(supabase, kind = null) {
     archived: Boolean(r.archived_at),
     problemTags: r.problem_tags ?? [],
     createdAt: r.created_at
-  }));
+  };
+}
+
+// Fetch one conversation by id (RLS-scoped). Used to open a thread via a deep
+// link (e.g. from the reviews page) even when it isn't in the current filtered
+// list — admins can thus open a shop chat from a review. Returns null if the
+// caller can't see it.
+export async function fetchConversation(supabase, conversationId) {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*, shops(name)")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  let person = null;
+  if (data.created_by) {
+    const { data: p } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, role")
+      .eq("id", data.created_by)
+      .maybeSingle();
+    person = p ?? null;
+  }
+  return mapConversationRow(data, person);
 }
 
 export async function fetchMessages(supabase, conversationId) {

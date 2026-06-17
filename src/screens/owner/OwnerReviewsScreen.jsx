@@ -21,7 +21,7 @@ export function OwnerReviewsScreen() {
           Reviews customers left after chatting with your shops.
         </p>
       </header>
-      <ReviewsList reviews={shopReviews} loading={loading} />
+      <ReviewsList reviews={shopReviews} loading={loading} chatHrefBase="/owner/messages" />
     </div>
   );
 }

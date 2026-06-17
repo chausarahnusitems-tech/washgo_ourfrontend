@@ -19,6 +19,7 @@ import {
   closeConversation,
   deleteConversation,
   hideConversation,
+  fetchConversation,
   fetchConversationReview,
   fetchConversations,
   fetchMessages,
@@ -111,6 +112,9 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [reviewBusy, setReviewBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
+  // A deep-linked thread (e.g. from the reviews page) may not be in the current
+  // filtered list — fetch it on its own so the header/actions still render.
+  const [extraConv, setExtraConv] = useState(null);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -119,7 +123,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const recTimerRef = useRef(null);
   const cancelRecRef = useRef(false);
 
-  const activeConv = conversations.find((c) => c.id === activeId) ?? null;
+  const activeConv = conversations.find((c) => c.id === activeId) ?? extraConv;
   const isClosed = activeConv?.status === "closed";
   const isArchived = Boolean(activeConv?.archived);
   // Close keeps its broader permission (owner participant included); archive and
@@ -183,6 +187,25 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     }, 4000);
     return () => clearInterval(timer);
   }, [loadMessages, reloadList, activeId]);
+
+  // If the active thread isn't in the (possibly filtered) list — e.g. an admin
+  // opened a shop chat from the reviews page — fetch it on its own so the header
+  // and actions render. Cleared once it appears in the list.
+  useEffect(() => {
+    let active = true;
+    if (!supabase || !activeId || conversations.some((c) => c.id === activeId)) {
+      setExtraConv(null);
+      return undefined;
+    }
+    fetchConversation(supabase, activeId)
+      .then((c) => {
+        if (active) setExtraConv(c);
+      })
+      .catch((err) => console.error("[washgo] load conversation failed", err));
+    return () => {
+      active = false;
+    };
+  }, [supabase, activeId, conversations]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
