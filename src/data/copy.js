@@ -263,6 +263,7 @@ export const copy = {
     roleAdmin: "Admin",
     // Problem tags (support triage)
     chooseProblemTags: "What's this about?",
+    contactSupport: "Contact support",
     startSupport: "Start chat",
     tagServiceQuality: "Poor Service Quality",
     tagUnprofessional: "Unprofessional Staff",
@@ -289,6 +290,9 @@ export const copy = {
     attach: "Attach photo or video",
     uploading: "Uploading…",
     videoTooLarge: "That video is too large (max 50MB).",
+    imageTooLarge: "That image is too large (max 25MB).",
+    removeAttachment: "Remove attachment",
+    attachment: "attachment",
     // Live view (coming soon)
     watchLive: "Watch live",
     liveComingSoon: "Live view is coming soon — you'll be able to watch your wash in real time.",
@@ -314,7 +318,29 @@ export const copy = {
     recording: "Recording…",
     stopRecording: "Send",
     cancelRecording: "Cancel",
-    micDenied: "Microphone access was blocked. Enable it in your browser to record voice messages."
+    micDenied: "Microphone access was blocked. Enable it in your browser to record voice messages.",
+    // Report a chat to the admins
+    reportChat: "Report",
+    reportChatTitle: "Report this chat",
+    reportChatHint: "Flag this conversation for our team to review. Add details if you can.",
+    reportReasonPlaceholder: "What's the problem? (optional)",
+    reportSubmit: "Send report",
+    reportSentTitle: "Report sent",
+    reportSent: "Thanks — our team will review this conversation.",
+    done: "Done",
+    // Admin reports inbox
+    reports: "Reports",
+    reportsTitle: "Reported chats",
+    noReports: "No reports yet.",
+    reportStatusOpen: "Open",
+    reportStatusResolved: "Resolved",
+    markResolved: "Mark resolved",
+    reopen: "Reopen",
+    openChat: "Open chat",
+    reportedBy: "Reported by",
+    reportNoReason: "No reason provided",
+    // Owner reviews delay (anti-retaliation)
+    reviewsOwnerDelayNote: "To keep feedback fair, reviews appear here 5 days after a customer submits them."
   },
   vi: {
     signInToContinue: "Đăng nhập để tiếp tục",
@@ -580,6 +606,7 @@ export const copy = {
     roleAdmin: "Quản trị viên",
     // Problem tags (support triage)
     chooseProblemTags: "Bạn cần hỗ trợ về vấn đề gì?",
+    contactSupport: "Liên hệ hỗ trợ",
     startSupport: "Bắt đầu trò chuyện",
     tagServiceQuality: "Chất lượng dịch vụ kém",
     tagUnprofessional: "Nhân viên thiếu chuyên nghiệp",
@@ -606,6 +633,9 @@ export const copy = {
     attach: "Đính kèm ảnh hoặc video",
     uploading: "Đang tải lên…",
     videoTooLarge: "Video quá lớn (tối đa 50MB).",
+    imageTooLarge: "Ảnh quá lớn (tối đa 25MB).",
+    removeAttachment: "Xóa tệp đính kèm",
+    attachment: "tệp đính kèm",
     // Live view (coming soon)
     watchLive: "Xem trực tiếp",
     liveComingSoon: "Tính năng xem trực tiếp sắp ra mắt — bạn sẽ có thể theo dõi quá trình rửa xe theo thời gian thực.",
@@ -631,6 +661,28 @@ export const copy = {
     recording: "Đang ghi âm…",
     stopRecording: "Gửi",
     cancelRecording: "Hủy",
-    micDenied: "Quyền truy cập micro bị chặn. Hãy bật trong trình duyệt để ghi âm tin nhắn thoại."
+    micDenied: "Quyền truy cập micro bị chặn. Hãy bật trong trình duyệt để ghi âm tin nhắn thoại.",
+    // Report a chat to the admins
+    reportChat: "Báo cáo",
+    reportChatTitle: "Báo cáo cuộc trò chuyện này",
+    reportChatHint: "Gắn cờ cuộc trò chuyện này để đội ngũ của chúng tôi xem xét. Thêm chi tiết nếu có thể.",
+    reportReasonPlaceholder: "Vấn đề là gì? (không bắt buộc)",
+    reportSubmit: "Gửi báo cáo",
+    reportSentTitle: "Đã gửi báo cáo",
+    reportSent: "Cảm ơn — đội ngũ của chúng tôi sẽ xem xét cuộc trò chuyện này.",
+    done: "Xong",
+    // Admin reports inbox
+    reports: "Báo cáo",
+    reportsTitle: "Cuộc trò chuyện bị báo cáo",
+    noReports: "Chưa có báo cáo nào.",
+    reportStatusOpen: "Đang mở",
+    reportStatusResolved: "Đã xử lý",
+    markResolved: "Đánh dấu đã xử lý",
+    reopen: "Mở lại",
+    openChat: "Mở cuộc trò chuyện",
+    reportedBy: "Báo cáo bởi",
+    reportNoReason: "Không có lý do",
+    // Owner reviews delay (anti-retaliation)
+    reviewsOwnerDelayNote: "Để đảm bảo công bằng, đánh giá sẽ hiển thị tại đây 5 ngày sau khi khách hàng gửi."
   }
 };

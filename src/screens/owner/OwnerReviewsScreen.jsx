@@ -20,6 +20,7 @@ export function OwnerReviewsScreen() {
         <p className="mt-1 text-sm text-neutral-500">
           Reviews customers left after chatting with your shops.
         </p>
+        <p className="mt-2 rounded-xl bg-mist px-3 py-2 text-xs text-neutral-500">{t("reviewsOwnerDelayNote")}</p>
       </header>
       <ReviewsList reviews={shopReviews} loading={loading} chatHrefBase="/owner/messages" />
     </div>

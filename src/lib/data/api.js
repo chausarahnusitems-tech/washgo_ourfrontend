@@ -793,3 +793,56 @@ export async function fetchConversationReviews(supabase) {
     problemTags: r.conversations?.problem_tags ?? []
   }));
 }
+
+// Report a shop chat to the admins. Either participant (customer or owner) may
+// file; the RPC re-checks kind ('shop') + participation and collapses repeat
+// reports into the caller's existing open one. `reason` is optional free text.
+export async function reportConversation(supabase, conversationId, reason = "") {
+  return unwrap(
+    await supabase.rpc("report_conversation", { p_conv: conversationId, p_reason: reason || null })
+  );
+}
+
+// All conversation reports the caller may read (RLS-scoped: admins see every
+// report). Joins the reported shop chat and resolves the reporter's identity via
+// a second profiles read (same pattern as fetchConversationReviews).
+export async function fetchConversationReports(supabase) {
+  const rows = unwrap(
+    await supabase
+      .from("conversation_reports")
+      .select(
+        "id, reason, status, created_at, reported_by, " +
+          "conversations(id, kind, shop_id, created_at, shops(name))"
+      )
+      .order("created_at", { ascending: false })
+  );
+
+  const reporterIds = [...new Set(rows.map((r) => r.reported_by).filter(Boolean))];
+  let byId = {};
+  if (reporterIds.length) {
+    const people = unwrap(
+      await supabase.from("profiles").select("id, full_name, email, role").in("id", reporterIds)
+    );
+    byId = Object.fromEntries(people.map((p) => [p.id, p]));
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    reason: r.reason ?? null,
+    status: r.status ?? "open",
+    createdAt: r.created_at,
+    reporterId: r.reported_by,
+    reporterName: byId[r.reported_by]?.full_name ?? null,
+    reporterEmail: byId[r.reported_by]?.email ?? null,
+    reporterRole: byId[r.reported_by]?.role ?? null,
+    conversationId: r.conversations?.id ?? null,
+    shopName: r.conversations?.shops?.name ?? null
+  }));
+}
+
+// Admin: flip a report between 'open' and 'resolved'. RLS-RPC is admin-only.
+export async function setReportStatus(supabase, reportId, status) {
+  return unwrap(
+    await supabase.rpc("set_report_status", { p_report: reportId, p_status: status })
+  );
+}
