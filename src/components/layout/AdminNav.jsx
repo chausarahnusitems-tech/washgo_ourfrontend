@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BadgeCheck, ClipboardCheck, LogOut, MessageCircle, ShieldCheck, Store } from "lucide-react";
+import { ArrowLeft, BadgeCheck, ClipboardCheck, LogOut, MessageCircle, ShieldCheck, Star, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
@@ -14,7 +14,8 @@ const NAV_ITEMS = [
   { key: "queue", label: "Approval queue", href: "/admin", icon: ClipboardCheck },
   { key: "shops", label: "All shops", href: "/admin/shops", icon: Store },
   { key: "claims", label: "Applications", href: "/admin/claims", icon: BadgeCheck },
-  { key: "messages", label: "Messages", href: "/admin/messages", icon: MessageCircle }
+  { key: "messages", label: "Messages", href: "/admin/messages", icon: MessageCircle },
+  { key: "reviews", label: "Reviews", href: "/admin/reviews", icon: Star }
 ];
 
 function isActive(pathname, href) {

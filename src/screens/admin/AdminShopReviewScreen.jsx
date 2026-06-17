@@ -94,7 +94,7 @@ export function AdminShopReviewScreen({ shopId }) {
         <Field label="Phone" value={shop.phone} />
         <Field label="Address" value={shop.address} className="sm:col-span-2" />
         <Field label="Starting price" value={formatVnd(shop.starting_price)} />
-        <Field label="Wait time" value={shop.wait_minutes != null ? `${shop.wait_minutes} min` : null} />
+        <Field label="Max cars / slot" value={String(shop.max_cars_per_slot ?? 1)} />
         <Field label="Hours" value={shop.hours} />
         <Field label="Open for bookings" value={shop.is_open ? "Yes" : "No"} />
         <Field label="Promo badge" value={shop.promo ? "Shown" : "Hidden"} />

@@ -553,9 +553,16 @@ export async function fetchSlotAvailability(supabase, shopId, date) {
 // ---- Chat (customer / owner / admin) --------------------------------------
 
 // Find-or-create a thread (kind 'shop' needs a shopId; 'support' doesn't).
-export async function openConversation(supabase, kind, shopId = null) {
+// `tags` are the predefined problem-tag slugs to stamp on a NEW support thread
+// (ignored when an existing thread is found). Always sent so PostgREST resolves
+// the 3-arg open_conversation.
+export async function openConversation(supabase, kind, shopId = null, tags = []) {
   return unwrap(
-    await supabase.rpc("open_conversation", { p_kind: kind, p_shop_id: shopId })
+    await supabase.rpc("open_conversation", {
+      p_kind: kind,
+      p_shop_id: shopId,
+      p_tags: tags
+    })
   );
 }
 
@@ -578,43 +585,211 @@ export async function fetchConversations(supabase, kind = null) {
   if (kind) query = query.eq("kind", kind);
   const rows = unwrap(await query);
 
-  const creatorIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))];
+  // Drop conversations the caller hid from their own list ("delete for me"). The
+  // hidden rows are RLS-scoped to the caller, so this select returns only theirs.
+  const hiddenRows = unwrap(await supabase.from("conversation_hidden").select("conversation_id"));
+  const hiddenSet = new Set(hiddenRows.map((h) => h.conversation_id));
+  const visible = rows.filter((r) => !hiddenSet.has(r.id));
+
+  const creatorIds = [...new Set(visible.map((r) => r.created_by).filter(Boolean))];
   let byId = {};
   if (creatorIds.length) {
     const people = unwrap(
-      await supabase.from("profiles").select("id, full_name, email").in("id", creatorIds)
+      await supabase.from("profiles").select("id, full_name, email, role").in("id", creatorIds)
     );
     byId = Object.fromEntries(people.map((p) => [p.id, p]));
   }
 
-  return rows.map((r) => ({
+  return visible.map((r) => mapConversationRow(r, byId[r.created_by]));
+}
+
+// Shape one conversation row (+ its creator profile) into the UI object. Shared
+// by the list fetch and the single-conversation fetch so they stay in sync.
+// `person` is the created_by profile ({full_name,email,role}) or undefined.
+function mapConversationRow(r, person) {
+  return {
     id: r.id,
     kind: r.kind,
     shopId: r.shop_id,
     shopName: r.shops?.name ?? null,
     createdBy: r.created_by ?? null,
-    creatorName: byId[r.created_by]?.full_name ?? null,
-    creatorEmail: byId[r.created_by]?.email ?? null,
+    creatorName: person?.full_name ?? null,
+    creatorEmail: person?.email ?? null,
+    // Requester role lets the support inbox label a thread "Name · Customer/Owner".
+    creatorRole: person?.role ?? null,
+    status: r.status ?? "open",
+    closedAt: r.closed_at ?? null,
+    closedBy: r.closed_by ?? null,
+    archivedAt: r.archived_at ?? null,
+    archived: Boolean(r.archived_at),
+    problemTags: r.problem_tags ?? [],
     createdAt: r.created_at
-  }));
+  };
+}
+
+// Fetch one conversation by id (RLS-scoped). Used to open a thread via a deep
+// link (e.g. from the reviews page) even when it isn't in the current filtered
+// list — admins can thus open a shop chat from a review. Returns null if the
+// caller can't see it.
+export async function fetchConversation(supabase, conversationId) {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*, shops(name)")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  let person = null;
+  if (data.created_by) {
+    const { data: p } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, role")
+      .eq("id", data.created_by)
+      .maybeSingle();
+    person = p ?? null;
+  }
+  return mapConversationRow(data, person);
 }
 
 export async function fetchMessages(supabase, conversationId) {
   return unwrap(
     await supabase
       .from("messages")
-      .select("id, sender_id, body, created_at")
+      .select("id, sender_id, body, attachment_url, attachment_type, created_at")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
   );
 }
 
-export async function sendMessage(supabase, conversationId, senderId, body) {
+// Send a text and/or attachment message. `attachment` is { url, type } | null;
+// body coalesces to '' so an attachment-only message still satisfies the
+// NOT NULL body column.
+export async function sendMessage(supabase, conversationId, senderId, body, attachment = null) {
   return unwrap(
     await supabase
       .from("messages")
-      .insert({ conversation_id: conversationId, sender_id: senderId, body })
-      .select("id, sender_id, body, created_at")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: senderId,
+        body: body ?? "",
+        attachment_url: attachment?.url ?? null,
+        attachment_type: attachment?.type ?? null
+      })
+      .select("id, sender_id, body, attachment_url, attachment_type, created_at")
       .single()
   );
+}
+
+// Upload a chat attachment to the public 'chat-attachments' bucket under
+// <conversationId>/<uid>/<file> (the storage RLS keys off those path segments).
+// Returns { url, type } ready to pass to sendMessage. A timestamped filename
+// keeps each upload distinct (no upsert overwrite).
+export async function uploadChatAttachment(supabase, conversationId, uid, file) {
+  const safeName = (file.name || "file").replace(/[^\w.\-]/g, "_");
+  const path = `${conversationId}/${uid}/${Date.now()}-${safeName}`;
+  const { error } = await supabase.storage
+    .from("chat-attachments")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+  const mime = file.type || "";
+  return {
+    url: `${pub.publicUrl}?t=${Date.now()}`,
+    type: mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "image"
+  };
+}
+
+// Close a thread (requester, shop owner participant, or admin). Idempotent.
+export async function closeConversation(supabase, conversationId) {
+  return unwrap(
+    await supabase.rpc("close_conversation", { p_conv: conversationId })
+  );
+}
+
+// Upsert the caller's review of a (closed) conversation. RLS enforces non-admin
+// participant + closed thread + self.
+export async function submitConversationReview(supabase, conversationId, userId, rating, comment) {
+  return unwrap(
+    await supabase
+      .from("conversation_reviews")
+      .upsert(
+        { conversation_id: conversationId, user_id: userId, rating, comment: comment || null },
+        { onConflict: "conversation_id,user_id" }
+      )
+      .select("id, rating, comment, created_at")
+      .single()
+  );
+}
+
+// The caller's existing review for a thread (to prefill / avoid re-prompting),
+// or null if they haven't reviewed yet.
+export async function fetchConversationReview(supabase, conversationId, userId) {
+  const { data, error } = await supabase
+    .from("conversation_reviews")
+    .select("id, rating, comment, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+// Archive / unarchive a thread (reversible). RLS-RPC: admin or creator only.
+export async function setConversationArchived(supabase, conversationId, archived) {
+  return unwrap(
+    await supabase.rpc("set_conversation_archived", { p_conv: conversationId, p_archived: archived })
+  );
+}
+
+// Hide a thread from the caller's own list ("delete for me"). Non-destructive —
+// the thread, messages and review stay for the other party and for records.
+export async function hideConversation(supabase, conversationId) {
+  return unwrap(await supabase.rpc("hide_conversation", { p_conv: conversationId }));
+}
+
+// Hard purge ("delete for everyone"): admin-only, and the RPC refuses when a
+// review exists. Cascades messages/participants when allowed.
+export async function deleteConversation(supabase, conversationId) {
+  return unwrap(await supabase.rpc("delete_conversation", { p_conv: conversationId }));
+}
+
+// All conversation reviews the caller may read (RLS-scoped): admins see every
+// review; owners see reviews on the shop chats they participate in. Joins the
+// conversation (kind/shop/tags) and resolves reviewer identity via a second
+// profiles read (no direct FK to profiles, same pattern as fetchConversations).
+export async function fetchConversationReviews(supabase) {
+  const rows = unwrap(
+    await supabase
+      .from("conversation_reviews")
+      .select(
+        "id, rating, comment, created_at, user_id, " +
+          "conversations(id, kind, shop_id, problem_tags, created_at, closed_at, shops(name))"
+      )
+      .order("created_at", { ascending: false })
+  );
+
+  const reviewerIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  let byId = {};
+  if (reviewerIds.length) {
+    const people = unwrap(
+      await supabase.from("profiles").select("id, full_name, email, role").in("id", reviewerIds)
+    );
+    byId = Object.fromEntries(people.map((p) => [p.id, p]));
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    rating: r.rating,
+    comment: r.comment ?? null,
+    createdAt: r.created_at,
+    reviewerId: r.user_id,
+    reviewerName: byId[r.user_id]?.full_name ?? null,
+    reviewerEmail: byId[r.user_id]?.email ?? null,
+    reviewerRole: byId[r.user_id]?.role ?? null,
+    conversationId: r.conversations?.id ?? null,
+    kind: r.conversations?.kind ?? null,
+    shopId: r.conversations?.shop_id ?? null,
+    shopName: r.conversations?.shops?.name ?? null,
+    problemTags: r.conversations?.problem_tags ?? []
+  }));
 }
