@@ -31,6 +31,7 @@ import { cx } from "../../lib/cx.js";
 import { tagLabel } from "./problemTags.js";
 import { SupportTagPicker } from "./SupportTagPicker.jsx";
 import { ConversationReviewPrompt } from "./ConversationReviewPrompt.jsx";
+import { VoiceMessage } from "./VoiceMessage.jsx";
 
 const VIDEO_MAX_BYTES = 50 * 1024 * 1024; // 50MB cap for inline video uploads
 const GROUP_GAP_MS = 5 * 60 * 1000; // messages >5min apart start a new visual group
@@ -428,7 +429,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   }
 
   return (
-    <div className="grid h-full grid-cols-1 sm:grid-cols-[280px_1fr]">
+    <div className="grid h-full grid-cols-1 sm:grid-cols-[360px_1fr]">
       {/* Conversation list */}
       <aside className={cx("flex flex-col border-r border-black/10 bg-white", activeId && "hidden sm:flex")}>
         <div className="flex items-center justify-between gap-2 border-b border-black/10 px-4 py-3">
@@ -474,117 +475,150 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       <section className={cx("flex min-h-0 flex-col bg-mist", !activeId && "hidden sm:flex")}>
         {activeId ? (
           <>
-            <div className="flex items-center gap-2 border-b border-black/10 bg-white px-4 py-3">
-              <button type="button" onClick={() => setActiveId(null)} className="sm:hidden" aria-label="Back">
-                <MessageCircle className="h-5 w-5 text-neutral-500" />
-              </button>
-              <div className="min-w-0 flex-1">
-                <h3 className="truncate font-display text-base font-black">{convLabel(activeConv ?? {}, uid, t)}</h3>
-                {activeConv?.problemTags?.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {activeConv.problemTags.map((slug) => (
-                      <span
-                        key={slug}
-                        className="rounded-full bg-neutral-100 px-2 py-0.5 text-[0.65rem] font-bold text-neutral-600"
-                      >
-                        {tagLabel(slug, t)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Lifecycle actions */}
-              {!isClosed
-                ? canClose && (
-                    <button type="button" onClick={onCloseChat} className={headerBtn}>
-                      {t("closeChat")}
-                    </button>
-                  )
-                : canManage && (
-                    <>
-                      {isArchived ? (
-                        <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
-                          <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
-                          {t("unarchiveChat")}
-                        </button>
-                      ) : (
-                        <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
-                          <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-                          {t("archiveChat")}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={onDeleteChat}
-                        className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        {t("deleteChat")}
-                      </button>
-                    </>
+            <div className="border-b border-black/10 bg-white">
+              <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3">
+                <button type="button" onClick={() => setActiveId(null)} className="sm:hidden" aria-label="Back">
+                  <MessageCircle className="h-5 w-5 text-neutral-500" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate font-display text-base font-black">{convLabel(activeConv ?? {}, uid, t)}</h3>
+                  {activeConv?.problemTags?.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {activeConv.problemTags.map((slug) => (
+                        <span
+                          key={slug}
+                          className="rounded-full bg-neutral-100 px-2 py-0.5 text-[0.65rem] font-bold text-neutral-600"
+                        >
+                          {tagLabel(slug, t)}
+                        </span>
+                      ))}
+                    </div>
                   )}
+                </div>
+                {/* Lifecycle actions */}
+                {!isClosed
+                  ? canClose && (
+                      <button type="button" onClick={onCloseChat} className={headerBtn}>
+                        {t("closeChat")}
+                      </button>
+                    )
+                  : canManage && (
+                      <>
+                        {isArchived ? (
+                          <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
+                            <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
+                            {t("unarchiveChat")}
+                          </button>
+                        ) : (
+                          <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
+                            <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                            {t("archiveChat")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={onDeleteChat}
+                          className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("deleteChat")}
+                        </button>
+                      </>
+                    )}
+              </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {messages.map((m, i) => {
-                const prev = messages[i - 1];
-                const next = messages[i + 1];
-                const mine = m.sender_id === uid;
-                const tMs = new Date(m.created_at).getTime();
-                const newGroup =
-                  !prev || prev.sender_id !== m.sender_id || tMs - new Date(prev.created_at).getTime() > GROUP_GAP_MS;
-                const endGroup =
-                  !next || next.sender_id !== m.sender_id || new Date(next.created_at).getTime() - tMs > GROUP_GAP_MS;
-                const showDay = !prev || !sameDay(prev.created_at, m.created_at);
-                const time = new Date(m.created_at).toLocaleTimeString(locale, {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                });
-                return (
-                  <Fragment key={m.id}>
-                    {showDay && (
-                      <div className="my-3 flex justify-center">
-                        <span className="rounded-full bg-black/5 px-3 py-0.5 text-[0.65rem] font-bold text-neutral-500">
-                          {new Date(m.created_at).toLocaleDateString(locale, {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric"
-                          })}
-                        </span>
-                      </div>
-                    )}
-                    <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
-                      <div
-                        className={cx(
-                          "flex max-w-[78%] flex-col rounded-2xl px-3 py-2 text-sm",
-                          mine ? "bg-wash-500 text-white" : "bg-white text-ink shadow-sm ring-1 ring-black/5",
-                          endGroup && (mine ? "rounded-br-md" : "rounded-bl-md")
-                        )}
-                      >
-                        {m.attachment_url && m.attachment_type === "image" && (
-                          <img src={m.attachment_url} alt="attachment" className="mb-1 max-h-60 rounded-xl" />
-                        )}
-                        {m.attachment_url && m.attachment_type === "video" && (
-                          <video src={m.attachment_url} controls className="mb-1 max-h-60 rounded-xl" />
-                        )}
-                        {m.attachment_url && m.attachment_type === "audio" && (
-                          <audio src={m.attachment_url} controls className="mb-1 w-56 max-w-full" />
-                        )}
-                        {m.body && <span className="whitespace-pre-wrap break-words">{m.body}</span>}
-                        <span
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-3xl px-4 py-4">
+                {messages.map((m, i) => {
+                  const prev = messages[i - 1];
+                  const next = messages[i + 1];
+                  const mine = m.sender_id === uid;
+                  const tMs = new Date(m.created_at).getTime();
+                  const newGroup =
+                    !prev || prev.sender_id !== m.sender_id || tMs - new Date(prev.created_at).getTime() > GROUP_GAP_MS;
+                  const endGroup =
+                    !next || next.sender_id !== m.sender_id || new Date(next.created_at).getTime() - tMs > GROUP_GAP_MS;
+                  const showDay = !prev || !sameDay(prev.created_at, m.created_at);
+                  const time = new Date(m.created_at).toLocaleTimeString(locale, {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  });
+                  const isVisualMedia =
+                    m.attachment_url && (m.attachment_type === "image" || m.attachment_type === "video");
+                  // Photo-only messages show the time overlaid on the image, so the
+                  // bubble is mostly the photo (minimal coloured padding around it).
+                  const overlayTime = isVisualMedia && !m.body && m.attachment_type === "image";
+                  return (
+                    <Fragment key={m.id}>
+                      {showDay && (
+                        <div className="my-3 flex justify-center">
+                          <span className="rounded-full bg-black/5 px-3 py-0.5 text-[0.65rem] font-bold text-neutral-500">
+                            {new Date(m.created_at).toLocaleDateString(locale, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric"
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
+                        <div
                           className={cx(
-                            "mt-0.5 self-end text-[0.6rem] leading-none",
-                            mine ? "text-white/70" : "text-neutral-400"
+                            "flex max-w-[80%] flex-col overflow-hidden rounded-2xl text-sm",
+                            isVisualMedia ? "p-1" : "px-3 py-2",
+                            mine ? "bg-wash-500 text-white" : "bg-white text-ink shadow-sm ring-1 ring-black/5",
+                            endGroup && (mine ? "rounded-br-md" : "rounded-bl-md")
                           )}
                         >
-                          {time}
-                        </span>
+                          {isVisualMedia && (
+                            <div className="relative">
+                              {m.attachment_type === "image" ? (
+                                <img
+                                  src={m.attachment_url}
+                                  alt="attachment"
+                                  className="block max-h-80 w-full rounded-[0.9rem] object-cover"
+                                />
+                              ) : (
+                                <video
+                                  src={m.attachment_url}
+                                  controls
+                                  className="block max-h-80 w-full rounded-[0.9rem]"
+                                />
+                              )}
+                              {overlayTime && (
+                                <span className="absolute bottom-1.5 right-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[0.6rem] font-medium text-white">
+                                  {time}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {m.attachment_url && m.attachment_type === "audio" && (
+                            <VoiceMessage src={m.attachment_url} mine={mine} />
+                          )}
+                          {m.body && (
+                            <span className={cx("whitespace-pre-wrap break-words", isVisualMedia && "px-2 pt-1")}>
+                              {m.body}
+                            </span>
+                          )}
+                          {!overlayTime && (
+                            <span
+                              className={cx(
+                                "mt-0.5 self-end text-[0.6rem] leading-none",
+                                isVisualMedia && "px-2 pb-0.5",
+                                mine ? "text-white/70" : "text-neutral-400"
+                              )}
+                            >
+                              {time}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </Fragment>
-                );
-              })}
-              <div ref={bottomRef} />
+                    </Fragment>
+                  );
+                })}
+                <div ref={bottomRef} />
+              </div>
             </div>
 
             {isClosed ? (
@@ -602,81 +636,85 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                   ))}
               </>
             ) : recording ? (
-              <div className="flex items-center gap-3 border-t border-black/10 bg-white p-3">
-                <span className="flex items-center gap-2 text-sm font-bold text-red-600">
-                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
-                  {t("recording")} {mmss(recElapsed)}
-                </span>
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={cancelRecording}
-                    className="rounded-full px-3 py-1.5 text-sm font-semibold text-neutral-500 hover:bg-neutral-100"
-                  >
-                    {t("cancelRecording")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={finishRecording}
-                    aria-label={t("stopRecording")}
-                    className="grid h-11 w-11 place-items-center rounded-full bg-wash-500 text-white"
-                  >
-                    <Send className="h-5 w-5" aria-hidden="true" />
-                  </button>
+              <div className="border-t border-black/10 bg-white">
+                <div className="mx-auto flex w-full max-w-3xl items-center gap-3 p-3">
+                  <span className="flex items-center gap-2 text-sm font-bold text-red-600">
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
+                    {t("recording")} {mmss(recElapsed)}
+                  </span>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelRecording}
+                      className="rounded-full px-3 py-1.5 text-sm font-semibold text-neutral-500 hover:bg-neutral-100"
+                    >
+                      {t("cancelRecording")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={finishRecording}
+                      aria-label={t("stopRecording")}
+                      className="grid h-11 w-11 place-items-center rounded-full bg-wash-500 text-white"
+                    >
+                      <Send className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <form onSubmit={onSend} className="border-t border-black/10 bg-white p-3">
-                {pendingFile && (
-                  <div className="mb-2 flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600">
-                    <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="max-w-[12rem] truncate">{pendingFile.name}</span>
-                    <button type="button" onClick={() => setPendingFile(null)} aria-label="Remove attachment">
-                      <X className="h-3.5 w-3.5" />
+              <form onSubmit={onSend} className="border-t border-black/10 bg-white">
+                <div className="mx-auto w-full max-w-3xl p-3">
+                  {pendingFile && (
+                    <div className="mb-2 flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-xs text-neutral-600">
+                      <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="max-w-[12rem] truncate">{pendingFile.name}</span>
+                      <button type="button" onClick={() => setPendingFile(null)} aria-label="Remove attachment">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/*,video/*,audio/*"
+                      className="hidden"
+                      onChange={onPickFile}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={sending}
+                      aria-label={t("attach")}
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+                    >
+                      <Paperclip className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      disabled={sending}
+                      aria-label={t("recordVoice")}
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+                    >
+                      <Mic className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                    <input
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      placeholder={sending ? t("uploading") : "Type a message…"}
+                      disabled={sending}
+                      className="min-h-11 flex-1 rounded-full border border-black/10 px-4 text-sm outline-none focus:border-wash-500 disabled:bg-neutral-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={(!body.trim() && !pendingFile) || sending}
+                      aria-label="Send"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-wash-500 text-white disabled:bg-neutral-300"
+                    >
+                      <Send className="h-5 w-5" aria-hidden="true" />
                     </button>
                   </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*,video/*,audio/*"
-                    className="hidden"
-                    onChange={onPickFile}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    disabled={sending}
-                    aria-label={t("attach")}
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
-                  >
-                    <Paperclip className="h-5 w-5" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={startRecording}
-                    disabled={sending}
-                    aria-label={t("recordVoice")}
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
-                  >
-                    <Mic className="h-5 w-5" aria-hidden="true" />
-                  </button>
-                  <input
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder={sending ? t("uploading") : "Type a message…"}
-                    disabled={sending}
-                    className="min-h-11 flex-1 rounded-full border border-black/10 px-4 text-sm outline-none focus:border-wash-500 disabled:bg-neutral-50"
-                  />
-                  <button
-                    type="submit"
-                    disabled={(!body.trim() && !pendingFile) || sending}
-                    aria-label="Send"
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-wash-500 text-white disabled:bg-neutral-300"
-                  >
-                    <Send className="h-5 w-5" aria-hidden="true" />
-                  </button>
                 </div>
               </form>
             )}
