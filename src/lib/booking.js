@@ -1,13 +1,14 @@
-import { dates, plans, services, shops } from "../data/catalog.js";
-import { formatIsoLabel } from "./calendar.js";
+import { dates } from "../data/catalog.js";
+import { getCatalog } from "./catalog-store.js";
+import { formatIsoLabel, parseIsoDate, resolveBookingIso } from "./calendar.js";
 
 // Navigation state (screen, selectedShop, mapShop, quickShop, search, prevScreen)
 // now lives in the URL — only domain/session state remains here.
 export const initialState = {
   lang: "en",
-  // Membership tier. Unlocks perks + a checkout discount; it no longer funds the
-  // wallet (the cash wallet is topped up separately).
-  selectedPlan: "premium",
+  // Membership tier. 'basic' is the non-member default; joining the paid
+  // membership upgrades to 'premium' (10% checkout discount + perks).
+  selectedPlan: "basic",
   // Cash wallet balance in VND. This is the *spendable* balance: the two seeded
   // upcoming bookings below (90.000 + 144.000 = 234.000) are treated as already
   // paid from a 500.000 top-up, leaving 266.000 — so cancelling them refunds
@@ -90,20 +91,24 @@ export const initialState = {
 export const DEFAULT_SHOP_ID = "sparkle";
 
 export function getCurrentPlan(selectedPlan) {
+  const { plans } = getCatalog();
   return plans.find((plan) => plan.id === selectedPlan) ?? plans[1];
 }
 
 export function getCurrentShop(selectedShop) {
+  const { shops } = getCatalog();
   return shops.find((shop) => shop.id === selectedShop) ?? shops[0];
 }
 
 // Strict lookup that returns null for an unknown id (unlike getCurrentShop,
 // which falls back to shops[0]). Used to detect typo'd / stale deep links.
 export function getShopById(id) {
+  const { shops } = getCatalog();
   return shops.find((shop) => shop.id === id) ?? null;
 }
 
 export function getSelectedServices(selectedServiceIds) {
+  const { services } = getCatalog();
   const selected = new Set(selectedServiceIds);
   return services.filter((service) => selected.has(service.id));
 }
@@ -140,15 +145,28 @@ export function getSelectedDateLabel(selectedDate, t) {
   return `${t(fallback.label)} ${fallback.number} ${fallback.sub}`;
 }
 
+// Fold accents/diacritics so search is forgiving: "wurth" matches "Würth",
+// "an phu" matches "An Phú", "thu duc" matches "Thủ Đức". Strips combining marks
+// (NFD) and maps Vietnamese đ/Đ (which don't decompose) to d.
+export function foldAccents(value) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
+
 export function getVisibleShops(search, serviceId = null) {
-  const needle = (search ?? "").trim().toLowerCase();
+  const { shops } = getCatalog();
+  const needle = foldAccents((search ?? "").trim());
 
   return shops.filter((shop) => {
     if (serviceId && !shop.services.includes(serviceId)) return false;
     if (!needle) return true;
-    return `${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`
-      .toLowerCase()
-      .includes(needle);
+    return foldAccents(`${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`).includes(
+      needle
+    );
   });
 }
 
@@ -156,10 +174,80 @@ export function toggleItem(items, item) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
 }
 
-// Bookings without an explicit status are treated as upcoming (covers older
-// persisted state that predates the status field).
+// Generate "HH:MM" booking slot labels from a shop's structured hours, stepping
+// by slotMinutes from open (inclusive) to close (the last slot starts at most
+// one step before close). Returns null when hours aren't set, so callers fall
+// back to the legacy fixed slot list (src/data/catalog.js `times`).
+export function generateSlots(openTime, closeTime, slotMinutes = 60) {
+  if (!openTime || !closeTime) return null;
+  const toMin = (value) => {
+    const [h, m] = String(value).split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const start = toMin(openTime);
+  const end = toMin(closeTime);
+  const step = Math.max(15, slotMinutes || 60);
+  if (!(end > start)) return null;
+  const out = [];
+  for (let m = start; m + step <= end; m += step) {
+    out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+  }
+  return out.length ? out : null;
+}
+
+// Parse a stored slot label into 24h {hours, minutes}. Handles both the legacy
+// 12h dotted format ("10.00AM", "12.30PM", "2.00PM") and the structured 24h
+// format from generateSlots ("10:00", "14:30"). Returns null when unparseable.
+function parseSlotTime(time) {
+  if (typeof time !== "string") return null;
+  const match = /^\s*(\d{1,2})[:.](\d{2})\s*([AaPp][Mm])?\s*$/.exec(time);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3]?.toUpperCase();
+  if (meridiem === "AM") {
+    if (hours === 12) hours = 0;
+  } else if (meridiem === "PM") {
+    if (hours !== 12) hours += 12;
+  }
+  if (hours > 23 || minutes > 59) return null;
+  return { hours, minutes };
+}
+
+// The absolute local Date a booking is scheduled for, derived from its dateId
+// (ISO date, or a legacy quick-pick id resolved against the real calendar) plus
+// its slot time. Returns null when the date can't be resolved. A booking with no
+// parseable time falls back to end-of-day so a same-day slot isn't flagged
+// elapsed before the day is actually over.
+export function getBookingDateTime(booking) {
+  if (!booking) return null;
+  const day = parseIsoDate(resolveBookingIso(booking.dateId));
+  if (!day) return null;
+  const slot = parseSlotTime(booking.time);
+  return new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+    slot ? slot.hours : 23,
+    slot ? slot.minutes : 59
+  );
+}
+
+// True once a booking's scheduled slot is in the past.
+export function isBookingElapsed(booking) {
+  const when = getBookingDateTime(booking);
+  return Boolean(when && when.getTime() < Date.now());
+}
+
+// Effective status. Cancelled/completed are terminal and kept as recorded; an
+// "upcoming" booking whose slot has already passed is treated as completed so it
+// moves out of the upcoming list and into history automatically (no background
+// job needed). Bookings without an explicit status default to upcoming (covers
+// older persisted state that predates the status field).
 export function getBookingStatus(booking) {
-  return booking?.status ?? "upcoming";
+  const stored = booking?.status ?? "upcoming";
+  if (stored !== "upcoming") return stored;
+  return isBookingElapsed(booking) ? "completed" : "upcoming";
 }
 
 export function getUpcomingBookings(bookings) {
@@ -168,6 +256,20 @@ export function getUpcomingBookings(bookings) {
 
 export function getHistoryBookings(bookings) {
   return (bookings ?? []).filter((booking) => getBookingStatus(booking) !== "upcoming");
+}
+
+// The most recent past booking, for the home "Previous Booking" card. Real
+// completed washes rank above cancelled ones; ties break on the most recent
+// scheduled datetime. Returns null when there's no history yet.
+export function getPreviousBooking(bookings) {
+  const ranked = getHistoryBookings(bookings)
+    .map((booking) => ({
+      booking,
+      when: getBookingDateTime(booking)?.getTime() ?? 0,
+      done: getBookingStatus(booking) === "completed" ? 1 : 0
+    }))
+    .sort((a, b) => b.done - a.done || b.when - a.when);
+  return ranked[0]?.booking ?? null;
 }
 
 export function getBookingById(bookings, id) {

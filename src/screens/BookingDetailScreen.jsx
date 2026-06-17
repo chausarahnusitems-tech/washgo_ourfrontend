@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { dates, services as serviceCatalog, times } from "../data/catalog.js";
+import { dates, times } from "../data/catalog.js";
 import {
   formatVnd,
   getBookingById,
@@ -15,6 +15,7 @@ import {
   getSubtotal,
   getTotal
 } from "../lib/booking.js";
+import { resolveBookingIso, toIsoDate } from "../lib/calendar.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -28,10 +29,11 @@ const statusTones = {
 
 export function BookingDetailScreen({ bookingId }) {
   const router = useRouter();
-  const { t, state, updateBooking, cancelBooking, deleteBooking } = useApp();
+  const { t, state, catalog, requireAuth, updateBooking, cancelBooking, deleteBooking } = useApp();
   const booking = getBookingById(state.bookings, bookingId);
 
   const [editing, setEditing] = useState(false);
+  const [showLive, setShowLive] = useState(false);
   const [draft, setDraft] = useState(() => ({
     dateId: booking?.dateId ?? "today",
     time: booking?.time ?? times[0],
@@ -53,7 +55,20 @@ export function BookingDetailScreen({ bookingId }) {
 
   const status = getBookingStatus(booking);
   const isUpcoming = status === "upcoming";
+  // "Watch live" (deferred feature, stub only) is offered while the wash is
+  // plausibly happening: an upcoming booking scheduled for today. resolveBookingIso
+  // normalises both legacy quick-pick ids and stored ISO dates.
+  const canWatchLive = isUpcoming && resolveBookingIso(booking.dateId) === toIsoDate(new Date());
   const shop = getCurrentShop(booking.shopId);
+  // This shop's own bookable menu (fallback to the standard catalogue).
+  const STANDARD_SERVICE_IDS = ["exterior", "interior", "detailing", "wax"];
+  const allServices = catalog.services ?? [];
+  const ownServices = (shop?.services ?? [])
+    .map((id) => allServices.find((s) => s.id === id))
+    .filter(Boolean);
+  const bookableServices = ownServices.length
+    ? ownServices
+    : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id));
   const statusLabel = {
     upcoming: t("statusUpcoming"),
     completed: t("statusCompleted"),
@@ -88,19 +103,31 @@ export function BookingDetailScreen({ bookingId }) {
       services: d.services.includes(id) ? d.services.filter((s) => s !== id) : [...d.services, id]
     }));
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!canSave) return;
-    const ok = updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    const ok = await updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
     if (ok) setEditing(false);
   };
 
-  const onCancelBooking = () => {
-    cancelBooking(booking.id);
+  const onCancelBooking = async () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    await cancelBooking(booking.id);
     router.push("/bookings");
   };
 
-  const onDeleteBooking = () => {
-    deleteBooking(booking.id);
+  const onDeleteBooking = async () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    await deleteBooking(booking.id);
     router.push("/bookings");
   };
 
@@ -177,7 +204,7 @@ export function BookingDetailScreen({ bookingId }) {
           <h2 className="font-display text-base font-black">{t("chooseServices")}</h2>
           {editing ? (
             <div className="mt-3 grid gap-2">
-              {serviceCatalog.map((service) => {
+              {bookableServices.map((service) => {
                 const selected = draft.services.includes(service.id);
                 return (
                   <button
@@ -249,6 +276,12 @@ export function BookingDetailScreen({ bookingId }) {
             </>
           ) : isUpcoming ? (
             <>
+              {canWatchLive && (
+                <Button onClick={() => setShowLive(true)} className="min-h-[52px] w-full rounded-2xl">
+                  <Icon name="Eye" className="h-5 w-5" />
+                  {t("watchLive")}
+                </Button>
+              )}
               <Button onClick={startEdit} className="min-h-[52px] w-full rounded-2xl">
                 <Icon name="Pencil" className="h-5 w-5" />
                 {t("editBooking")}
@@ -273,6 +306,29 @@ export function BookingDetailScreen({ bookingId }) {
           )}
         </div>
       </div>
+
+      {/* DEFERRED FEATURE — live-view stub. No streaming backend yet; this only
+          surfaces the entry point. Real implementation (managed provider or
+          WebRTC + Supabase Realtime signaling) is a separate future phase. */}
+      {showLive && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowLive(false)}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-wash-50 text-wash-600">
+              <Icon name="Eye" className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 font-display text-lg font-black">{shop.name}</h2>
+            <p className="mt-2 text-sm text-neutral-600">{t("liveComingSoon")}</p>
+            <Button onClick={() => setShowLive(false)} className="mt-5 w-full">
+              {t("close")}
+            </Button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { shops as allShops, userLocation } from "../data/catalog.js";
+import Link from "next/link";
+import { userLocation } from "../data/catalog.js";
 import { getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
@@ -21,18 +22,34 @@ const filterChips = [
   { chip: "detail", service: "detailing", icon: "Sparkles" }
 ];
 
-export function SearchBar({ value, onChange, t }) {
+export function SearchBar({ value, onChange, t, activeFav, onToggleFav }) {
   return (
-    <label className="grid min-h-12 grid-cols-[auto_1fr] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
-      <Icon name="Search" className="h-5 w-5" />
-      <input
-        type="search"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={t("searchPlaceholder")}
-        className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
-      />
-    </label>
+    <div className="flex min-h-12 items-center gap-2 rounded-full bg-neutral-100 pl-4 pr-1.5 text-neutral-500">
+      <label className="flex min-w-0 flex-1 items-center gap-3">
+        <Icon name="Search" className="h-5 w-5 shrink-0" />
+        <input
+          type="search"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={t("searchPlaceholder")}
+          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
+        />
+      </label>
+      {onToggleFav ? (
+        <button
+          type="button"
+          aria-pressed={activeFav}
+          aria-label={t("favourites")}
+          title={t("favourites")}
+          onClick={onToggleFav}
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition ${
+            activeFav ? "bg-wash-50 text-wash-500" : "text-neutral-400 hover:text-wash-500"
+          }`}
+        >
+          <Icon name="Heart" className={`h-5 w-5 ${activeFav ? "fill-wash-500" : ""}`} />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -68,26 +85,47 @@ export function FilterChips({ t, activeService, onToggleService, onClearFilter }
   );
 }
 
+// CTA for owners to put their car wash on the map (new-shop application).
+export function ListYourCarWashButton({ className }) {
+  return (
+    <Link
+      href="/claim/new"
+      className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-wash-300 bg-wash-50 px-3 text-sm font-bold text-wash-600 transition hover:bg-wash-100 ${className ?? ""}`}
+    >
+      <Icon name="Plus" className="h-4 w-4" />
+      List your car wash
+    </Link>
+  );
+}
+
 export function ExploreScreen() {
   const isDesktop = useIsDesktop();
-  const { t, state } = useApp();
+  const { t, state, catalog } = useApp();
   const { router, searchParams, setParams } = useUrlNav();
+
+  // Live reference catalog (DB-backed in backend mode, seed in demo). Guard for
+  // it being empty on the first paint before the DB fetch resolves.
+  const allShops = catalog.shops ?? [];
 
   const search = searchParams.get("q") ?? "";
   const activeService = searchParams.get("service") ?? null;
+  const activeFav = searchParams.get("fav") === "1";
 
   const props = {
     state: {
       ...state,
       search,
       mapShop: searchParams.get("shop") ?? null,
-      activeService
+      activeService,
+      activeFav
     },
+    allShops,
     t,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
     onToggleService: (service) => setParams({ service: service === activeService ? null : service }),
     onClearFilter: () => setParams({ service: null }),
+    onToggleFav: () => setParams({ fav: activeFav ? null : "1" }),
     onSelectMapShop: (id) => setParams({ shop: id }),
     onCloseMapShop: () => setParams({ shop: null }),
     onBook: (id) => router.push(`/shops/${id}/book`)
@@ -102,19 +140,22 @@ export function ExploreScreen() {
 /* Desktop: persistent sidebar list + map; detail card floats next to  */
 /* the list (images 1 & 2).                                            */
 /* ------------------------------------------------------------------ */
-function ExploreDesktop({ state, t, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
-  const visibleShops = useMemo(
-    () => getVisibleShops(state.search, state.activeService),
-    [state.search, state.activeService]
-  );
+function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClearFilter, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
+  const visibleShops = useMemo(() => {
+    // `allShops` is in the deps so this recomputes when the DB catalog arrives
+    // after first paint. `activeFav` keeps only saved places when toggled on.
+    const list = getVisibleShops(state.search, state.activeService);
+    return state.activeFav ? list.filter((s) => (state.favorites ?? []).includes(s.id)) : list;
+  }, [state.search, state.activeService, state.activeFav, state.favorites, allShops]);
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
   return (
     <section className="flex h-full">
       <aside className="flex w-[380px] shrink-0 flex-col border-r border-black/10 bg-white">
         <div className="grid gap-3 border-b border-black/10 px-4 py-4">
-          <SearchBar value={state.search} onChange={onSearch} t={t} />
+          <SearchBar value={state.search} onChange={onSearch} t={t} activeFav={state.activeFav} onToggleFav={onToggleFav} />
           <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
+          <ListYourCarWashButton />
         </div>
         <div className="grid gap-3 overflow-y-auto px-4 py-4">
           {visibleShops.length ? (
@@ -124,7 +165,6 @@ function ExploreDesktop({ state, t, onSearch, onToggleService, onClearFilter, on
                 shop={shop}
                 t={t}
                 onSelect={onSelectMapShop}
-                onQuickView={onSelectMapShop}
                 active={shop.id === state.mapShop}
               />
             ))
@@ -166,11 +206,13 @@ function ExploreDesktop({ state, t, onSearch, onToggleService, onClearFilter, on
 /* swaps the drawer for the detail sheet; back returns to the list     */
 /* (images 3 & 4).                                                     */
 /* ------------------------------------------------------------------ */
-function ExploreMobile({ state, t, onHome, onSearch, onToggleService, onClearFilter, onSelectMapShop, onCloseMapShop, onBook }) {
-  const visibleShops = useMemo(
-    () => getVisibleShops(state.search, state.activeService),
-    [state.search, state.activeService]
-  );
+function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, onClearFilter, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
+  const visibleShops = useMemo(() => {
+    // `allShops` is in the deps so this recomputes when the DB catalog arrives
+    // after first paint. `activeFav` keeps only saved places when toggled on.
+    const list = getVisibleShops(state.search, state.activeService);
+    return state.activeFav ? list.filter((s) => (state.favorites ?? []).includes(s.id)) : list;
+  }, [state.search, state.activeService, state.activeFav, state.favorites, allShops]);
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
   return (
@@ -212,13 +254,14 @@ function ExploreMobile({ state, t, onHome, onSearch, onToggleService, onClearFil
           handle={<h2 className="px-4 pb-1 pt-2 font-display text-lg font-black">{t("nearbyCarWashes")}</h2>}
         >
           <div className="grid shrink-0 gap-3 px-4 pb-3 pt-1">
-            <SearchBar value={state.search} onChange={onSearch} t={t} />
+            <SearchBar value={state.search} onChange={onSearch} t={t} activeFav={state.activeFav} onToggleFav={onToggleFav} />
             <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
+            <ListYourCarWashButton />
           </div>
           <div className="grid gap-3 overflow-y-auto px-4 pb-5">
             {visibleShops.length ? (
               visibleShops.map((shop) => (
-                <ShopCard key={shop.id} shop={shop} t={t} onSelect={onSelectMapShop} onQuickView={onSelectMapShop} />
+                <ShopCard key={shop.id} shop={shop} t={t} onSelect={onSelectMapShop} />
               ))
             ) : (
               <div className="rounded-[18px] border border-black/10 bg-white p-7 text-center text-sm text-neutral-500">{t("noResults")}</div>

@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
-import { DEFAULT_SHOP_ID, formatVnd, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
+import { formatVnd, getPreviousBooking, getShopById, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -33,13 +34,16 @@ export function HomeScreen() {
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
     onShop: (id) => router.push(`/explore?shop=${id}`),
-    onQuickView: (id) => setParams({ quick: id }, { replace: false }),
     onExplore: () => router.push("/explore"),
     onService: (serviceId) => {
       const seed = serviceCatalog.some((service) => service.id === serviceId) ? serviceId : "";
       router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
     },
-    onBook: () => router.push(`/shops/${DEFAULT_SHOP_ID}/book`),
+    // Book a wash = browse and choose a shop. Rebook = repeat the most recent
+    // booking's shop (fall back to browse when there's no history).
+    onBook: () => router.push("/explore"),
+    // Rebook a specific past booking's shop (Previous Booking card).
+    onRebookShop: (shopId) => router.push(shopId ? `/shops/${shopId}/book` : "/explore"),
     onBookings: () => router.push("/bookings"),
     onTopUp: () => router.push("/topup")
   };
@@ -53,7 +57,7 @@ export function HomeScreen() {
 /* ------------------------------------------------------------------ */
 /* Mobile (original single-column marketplace)                         */
 /* ------------------------------------------------------------------ */
-function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, onExplore, onService, onTopUp }) {
+function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onService, onTopUp }) {
   const visibleShops = getVisibleShops(state.search);
 
   return (
@@ -83,6 +87,17 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
         </button>
       </div>
 
+      <Link
+        href="/claim/new"
+        className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-wash-200 bg-wash-50 px-4 py-3 text-sm font-bold text-wash-600"
+      >
+        <span className="inline-flex items-center gap-2">
+          <Icon name="Plus" className="h-4 w-4" />
+          Own a car wash? List it on Washgo
+        </span>
+        <Icon name="ArrowLeft" className="h-4 w-4 rotate-180" />
+      </Link>
+
       <div className="mt-5 flex items-center justify-between">
         <h2 className="font-display text-base font-black">{t("recommended")}</h2>
         <button
@@ -108,7 +123,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
       <div className="mt-3 grid gap-3">
         {visibleShops.length ? (
           visibleShops.map((shop) => (
-            <ShopCard key={shop.id} shop={shop} t={t} onSelect={onShop} onQuickView={onQuickView} />
+            <ShopCard key={shop.id} shop={shop} t={t} onSelect={onShop} />
           ))
         ) : (
           <div className="rounded-[18px] border border-black/10 bg-white p-7 text-center text-sm text-neutral-500">{t("noResults")}</div>
@@ -152,10 +167,15 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onQuickView, o
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBookings }) {
+function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebookShop, onBookings }) {
   const nearbyShops = getVisibleShops("");
   // Surface the user's actual next upcoming booking (seeded list), not a fake.
   const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
+  // Most recent past booking (completed, cancelled, or an upcoming slot whose
+  // time has elapsed) and its catalog shop, for the Previous Booking card.
+  // getShopById returns null for a stale/unknown shop id (e.g. backend mode).
+  const previous = getPreviousBooking(state.bookings);
+  const previousShop = previous ? getShopById(previous.shopId) : null;
 
   return (
     <section className="h-full overflow-y-auto bg-mist">
@@ -200,12 +220,43 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBooking
             ) : (
               <div className="mt-3">
                 <p className="text-sm text-neutral-500">{t("noUpcoming")}</p>
-                <button type="button" onClick={onBook} className="mt-3 bg-transparent p-0 text-sm font-black text-wash-500">
-                  {t("bookWash")}
-                </button>
               </div>
             )}
           </DashCard>
+
+          {previous ? (
+            <DashCard>
+              <CardHeader title={t("previousBooking")} onClick={onBookings} />
+              <div className="mt-3 grid gap-3">
+                {/* Rich shop card when the booking's shop is in the live catalog;
+                    otherwise fall back to booking fields (backend mode may carry
+                    a shopId the catalog doesn't expose). */}
+                {previousShop ? (
+                  <ShopCard shop={previousShop} t={t} onSelect={onShop} />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onShop(previous.shopId)}
+                    className="flex items-center gap-3 rounded-[18px] border border-black/10 bg-white p-2 text-left"
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-wash-50 text-wash-500">
+                      <Icon name="Calendar" className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <strong className="block truncate font-display text-base font-black leading-tight">{previous.shop}</strong>
+                      <span className="block text-sm text-neutral-500">
+                        {previous.date} <span className="text-neutral-400">·</span> {previous.time}
+                      </span>
+                    </div>
+                  </button>
+                )}
+                <Button variant="secondary" onClick={() => onRebookShop(previous.shopId)}>
+                  <Icon name="RotateCcw" className="h-5 w-5" />
+                  {t("rebook")}
+                </Button>
+              </div>
+            </DashCard>
+          ) : null}
 
           <DashCard>
             <CardHeader title={t("quickActions")} />
@@ -214,10 +265,13 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onBooking
                 <Icon name="Car" className="h-5 w-5" />
                 {t("bookWash")}
               </Button>
-              <Button variant="secondary" onClick={onBook}>
-                <Icon name="RotateCcw" className="h-5 w-5" />
-                {t("rebook")}
-              </Button>
+              <Link
+                href="/claim/new"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-wash-300 bg-wash-50 px-4 text-sm font-bold text-wash-600 transition hover:bg-wash-100"
+              >
+                <Icon name="Plus" className="h-5 w-5" />
+                List your car wash
+              </Link>
             </div>
           </DashCard>
 

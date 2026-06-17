@@ -5,6 +5,8 @@ import { Icon } from "./ui/Icon.jsx";
 
 export function NearbyCard({ shop, t, onSelect }) {
   const closed = !shop.open;
+  // Imported, info-only listing (not a Washgo partner yet) — no price / booking.
+  const isDirectory = shop.listingType === "directory";
   const shopServices = shop.services
     .map((id) => serviceCatalog.find((service) => service.id === id))
     .filter(Boolean);
@@ -35,9 +37,16 @@ export function NearbyCard({ shop, t, onSelect }) {
         </p>
         <p className="truncate text-[0.7rem] text-neutral-500">{shop.address}</p>
         <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-          <span className="text-xs font-black text-ink">
-            {t("from")} {formatVnd(shop.starting)}
-          </span>
+          {isDirectory ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-black text-amber-700">
+              <Icon name="Info" className="h-3 w-3" />
+              {t("infoOnly")}
+            </span>
+          ) : (
+            <span className="text-xs font-black text-ink">
+              {t("from")} {formatVnd(shop.starting)}
+            </span>
+          )}
           <span className="flex items-center gap-1 text-neutral-400">
             {shopServices.slice(0, 3).map((service) => (
               <Icon key={service.id} name={service.icon} className="h-3.5 w-3.5" />

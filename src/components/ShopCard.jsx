@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { cx } from "../lib/cx.js";
 import { formatVnd } from "../lib/booking.js";
@@ -7,9 +8,20 @@ import { useApp } from "../lib/AppContext.jsx";
 import { Icon } from "./ui/Icon.jsx";
 import { IconButton } from "./ui/Button.jsx";
 
-export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
-  const { state, toggleFavorite } = useApp();
+export function ShopCard({ shop, t, onSelect, active = false }) {
+  const router = useRouter();
+  const { state, toggleFavorite, requireAuth } = useApp();
   const isFav = (state.favorites ?? []).includes(shop.id);
+  // Imported, info-only listing (not a Washgo partner yet) — no price / booking.
+  const isDirectory = shop.listingType === "directory";
+
+  const onToggleFav = () => {
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    toggleFavorite(shop.id);
+  };
 
   return (
     <article
@@ -41,15 +53,10 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
             {shop.name}
           </button>
           <div className="flex shrink-0 items-center">
-            {onQuickView ? (
-              <IconButton label={t("quickView")} onClick={() => onQuickView(shop.id)} className="h-9 w-9">
-                <Icon name="Eye" className="h-5 w-5" />
-              </IconButton>
-            ) : null}
             <IconButton
               label={isFav ? t("saved") : t("save")}
               aria-pressed={isFav}
-              onClick={() => toggleFavorite(shop.id)}
+              onClick={onToggleFav}
               className="h-9 w-9"
             >
               <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />
@@ -73,13 +80,16 @@ export function ShopCard({ shop, t, onSelect, onQuickView, active = false }) {
             <Icon name="Star" className="h-3.5 w-3.5" />
             {shop.rating} ({shop.reviews})
           </span>
-          <span className="inline-flex items-center gap-1">
-            <Icon name="Clock" className="h-3.5 w-3.5" />
-            {shop.wait}
-          </span>
-          <strong className="text-ink">
-            {t("from")} {formatVnd(shop.starting)}
-          </strong>
+          {isDirectory ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-black text-amber-700">
+              <Icon name="Info" className="h-3 w-3" />
+              {t("infoOnly")}
+            </span>
+          ) : (
+            <strong className="text-ink">
+              {t("from")} {formatVnd(shop.starting)}
+            </strong>
+          )}
         </div>
       </div>
     </article>
