@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, LayoutDashboard, LogOut, MessageCircle, Store } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, LogOut, MessageCircle, Star, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
@@ -13,7 +13,8 @@ import { useApp } from "../../lib/AppContext.jsx";
 const NAV_ITEMS = [
   { key: "dashboard", label: "Dashboard", href: "/owner", icon: LayoutDashboard },
   { key: "shops", label: "My shops", href: "/owner/shops", icon: Store },
-  { key: "messages", label: "Messages", href: "/owner/messages", icon: MessageCircle }
+  { key: "messages", label: "Messages", href: "/owner/messages", icon: MessageCircle },
+  { key: "reviews", label: "Reviews", href: "/owner/reviews", icon: Star }
 ];
 
 function isActive(pathname, href) {

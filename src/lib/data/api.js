@@ -607,6 +607,8 @@ export async function fetchConversations(supabase, kind = null) {
     status: r.status ?? "open",
     closedAt: r.closed_at ?? null,
     closedBy: r.closed_by ?? null,
+    archivedAt: r.archived_at ?? null,
+    archived: Boolean(r.archived_at),
     problemTags: r.problem_tags ?? [],
     createdAt: r.created_at
   }));
@@ -653,9 +655,10 @@ export async function uploadChatAttachment(supabase, conversationId, uid, file) 
     .upload(path, file, { upsert: false, contentType: file.type });
   if (error) throw error;
   const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+  const mime = file.type || "";
   return {
     url: `${pub.publicUrl}?t=${Date.now()}`,
-    type: (file.type || "").startsWith("video/") ? "video" : "image"
+    type: mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "image"
   };
 }
 
@@ -692,4 +695,57 @@ export async function fetchConversationReview(supabase, conversationId, userId) 
     .maybeSingle();
   if (error) throw error;
   return data ?? null;
+}
+
+// Archive / unarchive a thread (reversible). RLS-RPC: admin or creator only.
+export async function setConversationArchived(supabase, conversationId, archived) {
+  return unwrap(
+    await supabase.rpc("set_conversation_archived", { p_conv: conversationId, p_archived: archived })
+  );
+}
+
+// Hard-delete a thread (cascades messages/participants/reviews). Admin or creator.
+export async function deleteConversation(supabase, conversationId) {
+  return unwrap(await supabase.rpc("delete_conversation", { p_conv: conversationId }));
+}
+
+// All conversation reviews the caller may read (RLS-scoped): admins see every
+// review; owners see reviews on the shop chats they participate in. Joins the
+// conversation (kind/shop/tags) and resolves reviewer identity via a second
+// profiles read (no direct FK to profiles, same pattern as fetchConversations).
+export async function fetchConversationReviews(supabase) {
+  const rows = unwrap(
+    await supabase
+      .from("conversation_reviews")
+      .select(
+        "id, rating, comment, created_at, user_id, " +
+          "conversations(id, kind, shop_id, problem_tags, created_at, closed_at, shops(name))"
+      )
+      .order("created_at", { ascending: false })
+  );
+
+  const reviewerIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  let byId = {};
+  if (reviewerIds.length) {
+    const people = unwrap(
+      await supabase.from("profiles").select("id, full_name, email, role").in("id", reviewerIds)
+    );
+    byId = Object.fromEntries(people.map((p) => [p.id, p]));
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    rating: r.rating,
+    comment: r.comment ?? null,
+    createdAt: r.created_at,
+    reviewerId: r.user_id,
+    reviewerName: byId[r.user_id]?.full_name ?? null,
+    reviewerEmail: byId[r.user_id]?.email ?? null,
+    reviewerRole: byId[r.user_id]?.role ?? null,
+    conversationId: r.conversations?.id ?? null,
+    kind: r.conversations?.kind ?? null,
+    shopId: r.conversations?.shop_id ?? null,
+    shopName: r.conversations?.shops?.name ?? null,
+    problemTags: r.conversations?.problem_tags ?? []
+  }));
 }

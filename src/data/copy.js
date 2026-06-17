@@ -275,7 +275,27 @@ export const copy = {
     videoTooLarge: "That video is too large (max 50MB).",
     // Live view (coming soon)
     watchLive: "Watch live",
-    liveComingSoon: "Live view is coming soon — you'll be able to watch your wash in real time."
+    liveComingSoon: "Live view is coming soon — you'll be able to watch your wash in real time.",
+    // Chat management round 2: archive / delete / reviews / voice
+    deleteChat: "Delete chat",
+    confirmDeleteChat: "Delete this conversation permanently? This removes all its messages and can't be undone.",
+    archiveChat: "Archive",
+    unarchiveChat: "Unarchive",
+    archived: "Archived",
+    showArchived: "Show archived",
+    hideArchived: "Hide archived",
+    closedChats: "Closed",
+    reviews: "Reviews",
+    reviewsTitle: "Support reviews",
+    noReviews: "No reviews yet.",
+    reviewFrom: "From",
+    reviewFor: "For",
+    supportThread: "Support",
+    recordVoice: "Record voice message",
+    recording: "Recording…",
+    stopRecording: "Send",
+    cancelRecording: "Cancel",
+    micDenied: "Microphone access was blocked. Enable it in your browser to record voice messages."
   },
   vi: {
     signInToContinue: "Đăng nhập để tiếp tục",
@@ -553,6 +573,26 @@ export const copy = {
     videoTooLarge: "Video quá lớn (tối đa 50MB).",
     // Live view (coming soon)
     watchLive: "Xem trực tiếp",
-    liveComingSoon: "Tính năng xem trực tiếp sắp ra mắt — bạn sẽ có thể theo dõi quá trình rửa xe theo thời gian thực."
+    liveComingSoon: "Tính năng xem trực tiếp sắp ra mắt — bạn sẽ có thể theo dõi quá trình rửa xe theo thời gian thực.",
+    // Chat management round 2: archive / delete / reviews / voice
+    deleteChat: "Xóa cuộc trò chuyện",
+    confirmDeleteChat: "Xóa vĩnh viễn cuộc trò chuyện này? Tất cả tin nhắn sẽ bị xóa và không thể khôi phục.",
+    archiveChat: "Lưu trữ",
+    unarchiveChat: "Bỏ lưu trữ",
+    archived: "Đã lưu trữ",
+    showArchived: "Hiện mục đã lưu trữ",
+    hideArchived: "Ẩn mục đã lưu trữ",
+    closedChats: "Đã đóng",
+    reviews: "Đánh giá",
+    reviewsTitle: "Đánh giá hỗ trợ",
+    noReviews: "Chưa có đánh giá nào.",
+    reviewFrom: "Từ",
+    reviewFor: "Cho",
+    supportThread: "Hỗ trợ",
+    recordVoice: "Ghi âm tin nhắn thoại",
+    recording: "Đang ghi âm…",
+    stopRecording: "Gửi",
+    cancelRecording: "Hủy",
+    micDenied: "Quyền truy cập micro bị chặn. Hãy bật trong trình duyệt để ghi âm tin nhắn thoại."
   }
 };

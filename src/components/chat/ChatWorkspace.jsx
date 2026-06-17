@@ -1,16 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Headset, MessageCircle, Paperclip, Send, Store, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Archive,
+  ArchiveRestore,
+  Headset,
+  MessageCircle,
+  Mic,
+  Paperclip,
+  Send,
+  Store,
+  Trash2,
+  X
+} from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { createClient } from "../../lib/supabase/client.js";
 import {
   closeConversation,
+  deleteConversation,
   fetchConversationReview,
   fetchConversations,
   fetchMessages,
   openConversation,
   sendMessage,
+  setConversationArchived,
   submitConversationReview,
   uploadChatAttachment
 } from "../../lib/data/api.js";
@@ -20,6 +33,9 @@ import { SupportTagPicker } from "./SupportTagPicker.jsx";
 import { ConversationReviewPrompt } from "./ConversationReviewPrompt.jsx";
 
 const VIDEO_MAX_BYTES = 50 * 1024 * 1024; // 50MB cap for inline video uploads
+const GROUP_GAP_MS = 5 * 60 * 1000; // messages >5min apart start a new visual group
+// Preferred recording container/codec, in order — first the browser supports wins.
+const AUDIO_MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
 
 function roleLabel(role, t) {
   if (role === "owner") return t("roleOwner");
@@ -33,11 +49,39 @@ function roleLabel(role, t) {
 // shop name.
 function convLabel(c, uid, t) {
   if (c.kind === "support") {
-    if (c.createdBy && c.createdBy === uid) return "Support";
+    if (c.createdBy && c.createdBy === uid) return t("supportThread");
     const name = c.creatorName || c.creatorEmail || "User";
     return `${name} · ${roleLabel(c.creatorRole, t)}`;
   }
   return c.shopName || "Shop chat";
+}
+
+function sameDay(a, b) {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+// Active (non-archived) threads: open first, then closed; newest within each.
+function sortActive(list) {
+  return [...list].sort((a, b) => {
+    const ac = a.status === "closed" ? 1 : 0;
+    const bc = b.status === "closed" ? 1 : 0;
+    if (ac !== bc) return ac - bc;
+    const at = new Date(a.status === "closed" ? a.closedAt ?? a.createdAt : a.createdAt).getTime();
+    const bt = new Date(b.status === "closed" ? b.closedAt ?? b.createdAt : b.createdAt).getTime();
+    return bt - at;
+  });
+}
+
+function mmss(total) {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 // Shared chat UI for all roles: a conversation list + the selected thread + a
@@ -48,6 +92,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const supabase = useMemo(() => createClient(), []);
   const uid = auth.user?.id ?? null;
   const role = auth.profile?.role ?? null;
+  const isAdmin = role === "admin";
   const locale = lang === "vi" ? "vi-VN" : "en-US";
 
   const [conversations, setConversations] = useState([]);
@@ -59,24 +104,38 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [loadingList, setLoadingList] = useState(true);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [closing, setClosing] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [existingReview, setExistingReview] = useState(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recElapsed, setRecElapsed] = useState(0);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const recTimerRef = useRef(null);
+  const cancelRecRef = useRef(false);
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
   const isClosed = activeConv?.status === "closed";
-  // Button is permissive; close_conversation re-checks authoritatively. Owners
-  // are always participants of a 'shop' thread, so allow the action there.
+  const isArchived = Boolean(activeConv?.archived);
+  // Close keeps its broader permission (owner participant included); archive and
+  // delete are limited to the requester or an admin (the RPCs re-check anyway).
   const canClose =
-    !!activeConv && !isClosed && (role === "admin" || activeConv.createdBy === uid || activeConv.kind === "shop");
-  // Only the non-admin requester is auto-prompted to review (RLS still allows any
-  // non-admin participant, so this stays forward-compatible).
-  const isReviewTarget = isClosed && role !== "admin" && activeConv?.createdBy === uid;
+    !!activeConv && !isClosed && (isAdmin || activeConv.createdBy === uid || activeConv.kind === "shop");
+  const canManage = !!activeConv && (isAdmin || activeConv.createdBy === uid);
+  const isReviewTarget = isClosed && !isAdmin && activeConv?.createdBy === uid;
 
-  // Follow a changing `?c=` deep-link even on a same-route navigation (e.g. the
-  // admin clicks "Message" on another applicant while already on /admin/messages).
+  const activeConvs = useMemo(() => sortActive(conversations.filter((c) => !c.archived)), [conversations]);
+  const archivedConvs = useMemo(
+    () =>
+      conversations
+        .filter((c) => c.archived)
+        .sort((a, b) => new Date(b.archivedAt ?? b.createdAt) - new Date(a.archivedAt ?? a.createdAt)),
+    [conversations]
+  );
+
   useEffect(() => {
     if (initialConversationId) setActiveId(initialConversationId);
   }, [initialConversationId]);
@@ -89,7 +148,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     try {
       const list = await fetchConversations(supabase, kindFilter);
       setConversations(list);
-      setActiveId((prev) => prev ?? list[0]?.id ?? null);
+      setActiveId((prev) => prev ?? sortActive(list.filter((c) => !c.archived))[0]?.id ?? null);
     } catch (err) {
       console.error("[washgo] load conversations failed", err);
     } finally {
@@ -101,9 +160,6 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     reloadList();
   }, [reloadList]);
 
-  // Load + poll the active thread (simple polling beats wiring realtime here).
-  // Also refresh the conversation list each tick so a thread closed by the other
-  // party (status) surfaces without a manual reload.
   const loadMessages = useCallback(async () => {
     if (!supabase || !activeId) {
       setMessages([]);
@@ -130,12 +186,9 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // When a closed thread is open and the viewer is the review target, load any
-  // existing review (to prefill / suppress the prompt). Keyed on primitives so
-  // the 4s list refresh doesn't refetch every tick.
   useEffect(() => {
     let active = true;
-    if (!supabase || !activeConv || activeConv.status !== "closed" || role === "admin" || activeConv.createdBy !== uid) {
+    if (!supabase || !activeConv || activeConv.status !== "closed" || isAdmin || activeConv.createdBy !== uid) {
       setExistingReview(null);
       return undefined;
     }
@@ -148,11 +201,19 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, activeConv?.id, activeConv?.status, role, uid, activeConv?.createdBy]);
+  }, [supabase, activeConv?.id, activeConv?.status, isAdmin, uid, activeConv?.createdBy]);
+
+  // Tidy up any in-flight recording when the component unmounts.
+  useEffect(() => {
+    return () => {
+      if (recTimerRef.current) clearInterval(recTimerRef.current);
+      streamRef.current?.getTracks().forEach((tr) => tr.stop());
+    };
+  }, []);
 
   function onPickFile(event) {
     const file = event.target.files?.[0];
-    event.target.value = ""; // allow re-picking the same file
+    event.target.value = "";
     if (!file) return;
     if ((file.type || "").startsWith("video/") && file.size > VIDEO_MAX_BYTES) {
       window.alert(t("videoTooLarge"));
@@ -176,12 +237,93 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       await loadMessages();
     } catch (err) {
       console.error("[washgo] send message failed", err);
-      setBody(text); // restore on failure
+      setBody(text);
       setPendingFile(file);
     } finally {
       setSending(false);
     }
   }
+
+  // ---- Voice messages (browser MediaRecorder) -----------------------------
+
+  function stopTracks() {
+    streamRef.current?.getTracks().forEach((tr) => tr.stop());
+    streamRef.current = null;
+  }
+
+  function clearRecTimer() {
+    if (recTimerRef.current) {
+      clearInterval(recTimerRef.current);
+      recTimerRef.current = null;
+    }
+  }
+
+  async function onRecordingStop() {
+    clearRecTimer();
+    setRecording(false);
+    const cancelled = cancelRecRef.current;
+    cancelRecRef.current = false;
+    const chunks = chunksRef.current;
+    chunksRef.current = [];
+    const mime = mediaRecorderRef.current?.mimeType || "audio/webm";
+    stopTracks();
+    if (cancelled || !chunks.length || !activeId || !uid) return;
+    const ext = mime.includes("mp4") ? "mp4" : mime.includes("ogg") ? "ogg" : "webm";
+    const file = new File([new Blob(chunks, { type: mime })], `voice-${Date.now()}.${ext}`, { type: mime });
+    setSending(true);
+    try {
+      const attachment = await uploadChatAttachment(supabase, activeId, uid, file);
+      await sendMessage(supabase, activeId, uid, "", attachment);
+      await loadMessages();
+    } catch (err) {
+      console.error("[washgo] send voice failed", err);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function startRecording() {
+    if (isClosed || recording) return;
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      window.alert(t("micDenied"));
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mime = AUDIO_MIME_CANDIDATES.find(
+        (m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(m)
+      );
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      cancelRecRef.current = false;
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunksRef.current.push(e.data);
+      };
+      rec.onstop = onRecordingStop;
+      mediaRecorderRef.current = rec;
+      rec.start();
+      setRecording(true);
+      setRecElapsed(0);
+      recTimerRef.current = setInterval(() => setRecElapsed((s) => s + 1), 1000);
+    } catch (err) {
+      console.error("[washgo] mic error", err);
+      stopTracks();
+      window.alert(t("micDenied"));
+    }
+  }
+
+  function finishRecording() {
+    cancelRecRef.current = false;
+    mediaRecorderRef.current?.stop();
+  }
+
+  function cancelRecording() {
+    cancelRecRef.current = true;
+    mediaRecorderRef.current?.stop();
+  }
+
+  // ---- Thread lifecycle ----------------------------------------------------
 
   async function confirmStartSupport(tags) {
     setStarting(true);
@@ -199,14 +341,34 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
 
   async function onCloseChat() {
     if (!activeConv || !window.confirm(t("confirmCloseChat"))) return;
-    setClosing(true);
     try {
       await closeConversation(supabase, activeConv.id);
       await reloadList();
     } catch (err) {
       console.error("[washgo] close conversation failed", err);
-    } finally {
-      setClosing(false);
+    }
+  }
+
+  async function onArchive(archived) {
+    if (!activeConv) return;
+    try {
+      await setConversationArchived(supabase, activeConv.id, archived);
+      if (archived) setActiveId(null);
+      await reloadList();
+    } catch (err) {
+      console.error("[washgo] archive conversation failed", err);
+    }
+  }
+
+  async function onDeleteChat() {
+    if (!activeConv || !window.confirm(t("confirmDeleteChat"))) return;
+    const delId = activeConv.id;
+    try {
+      await deleteConversation(supabase, delId);
+      setActiveId((cur) => (cur === delId ? null : cur));
+      await reloadList();
+    } catch (err) {
+      console.error("[washgo] delete conversation failed", err);
     }
   }
 
@@ -231,13 +393,47 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     );
   }
 
+  const headerBtn =
+    "shrink-0 inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1.5 text-xs font-bold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50";
+
+  function renderConvItem(c) {
+    return (
+      <li key={c.id}>
+        <button
+          type="button"
+          onClick={() => setActiveId(c.id)}
+          className={cx(
+            "flex w-full items-center gap-3 border-b border-black/5 px-4 py-3 text-left transition",
+            c.id === activeId ? "bg-wash-50" : "hover:bg-neutral-50"
+          )}
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-neutral-100 text-neutral-500">
+            {c.kind === "support" ? <Headset className="h-4 w-4" /> : <Store className="h-4 w-4" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-bold text-ink">{convLabel(c, uid, t)}</span>
+            {c.archived ? (
+              <span className="text-[0.65rem] font-bold uppercase tracking-wide text-neutral-400">
+                {t("archived")}
+              </span>
+            ) : c.status === "closed" ? (
+              <span className="text-[0.65rem] font-bold uppercase tracking-wide text-neutral-400">
+                {t("chatClosed")}
+              </span>
+            ) : null}
+          </span>
+        </button>
+      </li>
+    );
+  }
+
   return (
     <div className="grid h-full grid-cols-1 sm:grid-cols-[280px_1fr]">
       {/* Conversation list */}
       <aside className={cx("flex flex-col border-r border-black/10 bg-white", activeId && "hidden sm:flex")}>
         <div className="flex items-center justify-between gap-2 border-b border-black/10 px-4 py-3">
           <h2 className="font-display text-lg font-black">Messages</h2>
-          {allowSupport && (
+          {allowSupport && !isAdmin && (
             <button
               type="button"
               onClick={() => setShowTagPicker(true)}
@@ -254,32 +450,22 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
           ) : conversations.length === 0 ? (
             <p className="p-4 text-sm text-neutral-400">No conversations yet.</p>
           ) : (
-            <ul>
-              {conversations.map((c) => (
-                <li key={c.id}>
+            <>
+              <ul>{activeConvs.map(renderConvItem)}</ul>
+              {archivedConvs.length > 0 && (
+                <>
                   <button
                     type="button"
-                    onClick={() => setActiveId(c.id)}
-                    className={cx(
-                      "flex w-full items-center gap-3 border-b border-black/5 px-4 py-3 text-left transition",
-                      c.id === activeId ? "bg-wash-50" : "hover:bg-neutral-50"
-                    )}
+                    onClick={() => setShowArchived((v) => !v)}
+                    className="flex w-full items-center gap-2 border-b border-black/5 px-4 py-2.5 text-left text-xs font-black uppercase tracking-wide text-neutral-500 hover:bg-neutral-50"
                   >
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-neutral-100 text-neutral-500">
-                      {c.kind === "support" ? <Headset className="h-4 w-4" /> : <Store className="h-4 w-4" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-bold text-ink">{convLabel(c, uid, t)}</span>
-                      {c.status === "closed" && (
-                        <span className="text-[0.65rem] font-bold uppercase tracking-wide text-neutral-400">
-                          {t("chatClosed")}
-                        </span>
-                      )}
-                    </span>
+                    <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                    {showArchived ? t("hideArchived") : t("showArchived")} ({archivedConvs.length})
                   </button>
-                </li>
-              ))}
-            </ul>
+                  {showArchived && <ul>{archivedConvs.map(renderConvItem)}</ul>}
+                </>
+              )}
+            </>
           )}
         </div>
       </aside>
@@ -307,46 +493,95 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                   </div>
                 )}
               </div>
-              {canClose && (
-                <button
-                  type="button"
-                  onClick={onCloseChat}
-                  disabled={closing}
-                  className="shrink-0 rounded-full border border-black/10 px-3 py-1.5 text-xs font-bold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  {t("closeChat")}
-                </button>
-              )}
+              {/* Lifecycle actions */}
+              {!isClosed
+                ? canClose && (
+                    <button type="button" onClick={onCloseChat} className={headerBtn}>
+                      {t("closeChat")}
+                    </button>
+                  )
+                : canManage && (
+                    <>
+                      {isArchived ? (
+                        <button type="button" onClick={() => onArchive(false)} className={headerBtn}>
+                          <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("unarchiveChat")}
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => onArchive(true)} className={headerBtn}>
+                          <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("archiveChat")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onDeleteChat}
+                        className={cx(headerBtn, "text-red-600 hover:bg-red-50")}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        {t("deleteChat")}
+                      </button>
+                    </>
+                  )}
             </div>
 
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-              {messages.map((m) => {
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {messages.map((m, i) => {
+                const prev = messages[i - 1];
+                const next = messages[i + 1];
                 const mine = m.sender_id === uid;
+                const tMs = new Date(m.created_at).getTime();
+                const newGroup =
+                  !prev || prev.sender_id !== m.sender_id || tMs - new Date(prev.created_at).getTime() > GROUP_GAP_MS;
+                const endGroup =
+                  !next || next.sender_id !== m.sender_id || new Date(next.created_at).getTime() - tMs > GROUP_GAP_MS;
+                const showDay = !prev || !sameDay(prev.created_at, m.created_at);
+                const time = new Date(m.created_at).toLocaleTimeString(locale, {
+                  hour: "2-digit",
+                  minute: "2-digit"
+                });
                 return (
-                  <div key={m.id} className={cx("flex flex-col", mine ? "items-end" : "items-start")}>
-                    <span
-                      className={cx(
-                        "max-w-[78%] rounded-2xl px-3 py-2 text-sm",
-                        mine ? "bg-wash-500 text-white" : "bg-white text-ink"
-                      )}
-                    >
-                      {m.attachment_url && m.attachment_type === "image" && (
-                        <img src={m.attachment_url} alt="attachment" className="mb-1 max-h-60 rounded-xl" />
-                      )}
-                      {m.attachment_url && m.attachment_type === "video" && (
-                        <video src={m.attachment_url} controls className="mb-1 max-h-60 rounded-xl" />
-                      )}
-                      {m.body && <span className="whitespace-pre-wrap break-words">{m.body}</span>}
-                    </span>
-                    <time className="mt-0.5 px-1 text-[0.65rem] text-neutral-400">
-                      {new Date(m.created_at).toLocaleString(locale, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      })}
-                    </time>
-                  </div>
+                  <Fragment key={m.id}>
+                    {showDay && (
+                      <div className="my-3 flex justify-center">
+                        <span className="rounded-full bg-black/5 px-3 py-0.5 text-[0.65rem] font-bold text-neutral-500">
+                          {new Date(m.created_at).toLocaleDateString(locale, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric"
+                          })}
+                        </span>
+                      </div>
+                    )}
+                    <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
+                      <div
+                        className={cx(
+                          "flex max-w-[78%] flex-col rounded-2xl px-3 py-2 text-sm",
+                          mine ? "bg-wash-500 text-white" : "bg-white text-ink shadow-sm ring-1 ring-black/5",
+                          endGroup && (mine ? "rounded-br-md" : "rounded-bl-md")
+                        )}
+                      >
+                        {m.attachment_url && m.attachment_type === "image" && (
+                          <img src={m.attachment_url} alt="attachment" className="mb-1 max-h-60 rounded-xl" />
+                        )}
+                        {m.attachment_url && m.attachment_type === "video" && (
+                          <video src={m.attachment_url} controls className="mb-1 max-h-60 rounded-xl" />
+                        )}
+                        {m.attachment_url && m.attachment_type === "audio" && (
+                          <audio src={m.attachment_url} controls className="mb-1 w-56 max-w-full" />
+                        )}
+                        {m.body && <span className="whitespace-pre-wrap break-words">{m.body}</span>}
+                        <span
+                          className={cx(
+                            "mt-0.5 self-end text-[0.6rem] leading-none",
+                            mine ? "text-white/70" : "text-neutral-400"
+                          )}
+                        >
+                          {time}
+                        </span>
+                      </div>
+                    </div>
+                  </Fragment>
                 );
               })}
               <div ref={bottomRef} />
@@ -355,7 +590,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
             {isClosed ? (
               <>
                 <div className="border-t border-black/10 bg-neutral-50 px-4 py-3 text-center text-sm text-neutral-500">
-                  {t("chatClosed")}
+                  {isArchived ? t("archived") : t("chatClosed")}
                 </div>
                 {isReviewTarget &&
                   (existingReview ? (
@@ -366,6 +601,30 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                     <ConversationReviewPrompt onSubmit={onSubmitReview} busy={reviewBusy} />
                   ))}
               </>
+            ) : recording ? (
+              <div className="flex items-center gap-3 border-t border-black/10 bg-white p-3">
+                <span className="flex items-center gap-2 text-sm font-bold text-red-600">
+                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
+                  {t("recording")} {mmss(recElapsed)}
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelRecording}
+                    className="rounded-full px-3 py-1.5 text-sm font-semibold text-neutral-500 hover:bg-neutral-100"
+                  >
+                    {t("cancelRecording")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={finishRecording}
+                    aria-label={t("stopRecording")}
+                    className="grid h-11 w-11 place-items-center rounded-full bg-wash-500 text-white"
+                  >
+                    <Send className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
             ) : (
               <form onSubmit={onSend} className="border-t border-black/10 bg-white p-3">
                 {pendingFile && (
@@ -381,7 +640,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/*,video/*"
+                    accept="image/*,video/*,audio/*"
                     className="hidden"
                     onChange={onPickFile}
                   />
@@ -393,6 +652,15 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                     className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
                   >
                     <Paperclip className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    disabled={sending}
+                    aria-label={t("recordVoice")}
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+                  >
+                    <Mic className="h-5 w-5" aria-hidden="true" />
                   </button>
                   <input
                     value={body}
