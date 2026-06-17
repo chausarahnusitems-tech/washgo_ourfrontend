@@ -289,7 +289,7 @@ export async function fetchOwnerBookings(supabase, shopIds) {
   const rows = unwrap(
     await supabase
       .from("bookings")
-      .select("*, booking_services(service_id), shops(name)")
+      .select("*, booking_services(service_id), shops(name), conversations(id)")
       .in("shop_id", shopIds)
       .order("scheduled_date", { ascending: false })
   );
@@ -301,7 +301,10 @@ export async function fetchOwnerBookings(supabase, shopIds) {
     time: row.slot_time,
     services: (row.booking_services ?? []).map((s) => s.service_id),
     total: row.total ?? 0,
-    status: row.status ?? "upcoming"
+    status: row.status ?? "upcoming",
+    // The per-booking chat. [0] is safe: conversations_booking_id_key enforces at
+    // most one conversation per booking. RLS-scoped to threads the owner can see.
+    conversationId: row.conversations?.[0]?.id ?? null
   }));
 }
 
@@ -580,7 +583,10 @@ export async function openSupportThread(supabase, userId) {
 export async function fetchConversations(supabase, kind = null) {
   let query = supabase
     .from("conversations")
-    .select("*, shops(name)")
+    // conversation_reads is RLS-scoped to the caller, so the embed resolves to
+    // the caller's own read mark (0 or 1 row) per conversation. bookings() (via
+    // booking_id) carries the session a per-booking thread is about.
+    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time)")
     .order("created_at", { ascending: false });
   if (kind) query = query.eq("kind", kind);
   const rows = unwrap(await query);
@@ -607,6 +613,17 @@ export async function fetchConversations(supabase, kind = null) {
 // by the list fetch and the single-conversation fetch so they stay in sync.
 // `person` is the created_by profile ({full_name,email,role}) or undefined.
 function mapConversationRow(r, person) {
+  // RLS scopes conversation_reads to the caller (0/1 row), but don't depend on
+  // that positionally — take the latest read mark across whatever rows return.
+  const lastReadAt = (r.conversation_reads ?? []).reduce(
+    (acc, x) => (x?.last_read_at && (!acc || x.last_read_at > acc) ? x.last_read_at : acc),
+    null
+  );
+  const lastMessageAt = r.last_message_at ?? null;
+  // Unread = there's a message and the caller's read mark is older (or missing).
+  // The caller's own sends mark the thread read, so this lights up only for new
+  // messages from the other party.
+  const unread = Boolean(lastMessageAt) && (!lastReadAt || new Date(lastMessageAt) > new Date(lastReadAt));
   return {
     id: r.id,
     kind: r.kind,
@@ -623,7 +640,15 @@ function mapConversationRow(r, person) {
     archivedAt: r.archived_at ?? null,
     archived: Boolean(r.archived_at),
     problemTags: r.problem_tags ?? [],
-    createdAt: r.created_at
+    createdAt: r.created_at,
+    lastMessageAt,
+    lastMessagePreview: r.last_message_preview ?? null,
+    lastReadAt,
+    unread,
+    // Per-booking shop threads carry the booked session (null for other threads).
+    bookingId: r.booking_id ?? null,
+    bookingDate: r.bookings?.scheduled_date ?? null,
+    bookingSlot: r.bookings?.slot_time ?? null
   };
 }
 
@@ -634,7 +659,7 @@ function mapConversationRow(r, person) {
 export async function fetchConversation(supabase, conversationId) {
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, shops(name)")
+    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time)")
     .eq("id", conversationId)
     .maybeSingle();
   if (error) throw error;
@@ -659,6 +684,12 @@ export async function fetchMessages(supabase, conversationId) {
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
   );
+}
+
+// Mark the caller's read position in a thread to now() (clears its unread flag).
+// Called when a thread is opened/viewed and after the caller sends.
+export async function markConversationRead(supabase, conversationId) {
+  return unwrap(await supabase.rpc("mark_conversation_read", { p_conv: conversationId }));
 }
 
 // Send a text and/or attachment message. `attachment` is { url, type } | null;
