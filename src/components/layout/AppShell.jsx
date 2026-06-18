@@ -20,6 +20,9 @@ const ROLE_HOME = { admin: "/admin" };
 function isRoleExempt(pathname, home) {
   return (
     pathname.startsWith(home) ||
+    // The owner area is reachable by admins who also run a shop, so don't bounce
+    // them back to /admin while they're managing it.
+    pathname.startsWith("/owner") ||
     pathname.startsWith("/auth") ||
     pathname === "/login"
   );

@@ -18,7 +18,7 @@ function activeKey(pathname) {
 }
 
 export function TopNav({ className }) {
-  const { t, lang, setLang, auth } = useApp();
+  const { t, auth } = useApp();
   const pathname = usePathname();
   const active = activeKey(pathname);
 
@@ -67,22 +67,6 @@ export function TopNav({ className }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-4">
-          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label={t("language")}>
-            {["en", "vi"].map((code) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => setLang(code)}
-                className={cx(
-                  "min-w-8 rounded-full px-2 text-[0.68rem] font-black",
-                  lang === code ? "bg-ink text-white" : "text-neutral-500"
-                )}
-              >
-                {code.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
           {isSignedIn ? (
             <Link
               href="/account"

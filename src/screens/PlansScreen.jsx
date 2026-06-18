@@ -20,7 +20,7 @@ const PERKS = [
 
 export function PlansScreen() {
   const router = useRouter();
-  const { t, state, auth, mode, setLang: onLang } = useApp();
+  const { t, state, auth, mode } = useApp();
   const onBack = useBackOr("/account");
   const supabase = useMemo(() => createClient(), []);
 
@@ -52,7 +52,7 @@ export function PlansScreen() {
     <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white lg:bg-mist">
       <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 pb-4 pt-7">
         <div className="mx-auto w-full max-w-xl">
-          <div className="mb-7 grid min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3">
+          <div className="mb-7 grid min-w-0 grid-cols-[auto_1fr] items-center gap-3">
             <IconButton label={t("back")} onClick={onBack}>
               <Icon name="ArrowLeft" className="h-5 w-5" />
             </IconButton>
@@ -61,20 +61,6 @@ export function PlansScreen() {
                 {t("membershipTitle")}
               </h1>
               <p className="mt-1 truncate text-xs text-neutral-500">{t("membershipSubtitle")}</p>
-            </div>
-            <div className="inline-flex h-9 shrink-0 rounded-full bg-neutral-100 p-1" role="group" aria-label={t("language")}>
-              {["en", "vi"].map((code) => (
-                <button
-                  key={code}
-                  type="button"
-                  onClick={() => onLang(code)}
-                  className={`min-w-8 rounded-full px-2 text-[0.68rem] font-black ${
-                    state.lang === code ? "bg-ink text-white" : "text-neutral-500"
-                  }`}
-                >
-                  {code.toUpperCase()}
-                </button>
-              ))}
             </div>
           </div>
 

@@ -202,14 +202,49 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           </button>
         ) : null}
 
-        <img
-          src={images.hero}
-          alt={shop.name}
-          className={cx(
-            "mt-4 w-full rounded-xl object-cover object-[58%_center]",
-            isMobile ? "h-48" : "h-44"
-          )}
-        />
+        {/* Owner-uploaded gallery: a scroll-snap row when there's more than one
+            photo, otherwise the single cover. Falls back to the hero image. */}
+        {shop.imageUrls?.length > 1 ? (
+          <div className="mt-4 flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-xl">
+            {shop.imageUrls.map((url, i) => (
+              <img
+                key={`${url}-${i}`}
+                src={url}
+                alt={`${shop.name} ${i + 1}`}
+                className={cx(
+                  "w-full shrink-0 snap-center rounded-xl object-cover object-center",
+                  isMobile ? "h-48" : "h-44"
+                )}
+              />
+            ))}
+          </div>
+        ) : (
+          <img
+            src={shop.imageUrl || images.hero}
+            alt={shop.name}
+            className={cx(
+              "mt-4 w-full rounded-xl object-cover",
+              shop.imageUrl ? "object-center" : "object-[58%_center]",
+              isMobile ? "h-48" : "h-44"
+            )}
+          />
+        )}
+
+        {/* Promo video info card — paid feature, only present when ACTIVE. */}
+        {shop.promoVideoUrl ? (
+          <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-neutral-50">
+            <div className="flex items-center gap-2 px-3 py-2 text-xs font-black text-wash-600">
+              <Icon name="Play" className="h-4 w-4" />
+              {t("watchPromo")}
+            </div>
+            <video
+              src={shop.promoVideoUrl}
+              controls
+              playsInline
+              className={cx("w-full object-cover", isMobile ? "h-48" : "h-44")}
+            />
+          </div>
+        ) : null}
 
         {isDirectory ? (
           shop.notes ? (

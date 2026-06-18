@@ -7,7 +7,7 @@ import { icons } from "../../assets.js";
 import { useApp } from "../../lib/AppContext.jsx";
 
 export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = false }) {
-  const { t, lang, setLang } = useApp();
+  const { t } = useApp();
 
   return (
     <header className="mb-4 flex min-h-12 items-start justify-between gap-3">
@@ -39,21 +39,6 @@ export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = fa
           <div className="text-right text-[0.68rem] leading-tight">
             <span className="block text-neutral-500">{t("memberUntil")}</span>
             <strong className="block text-ink">{t("dateUntil")}</strong>
-          </div>
-          <div className="inline-flex h-9 rounded-full bg-neutral-100 p-1" role="group" aria-label={t("language")}>
-            {["en", "vi"].map((code) => (
-              <button
-                key={code}
-                type="button"
-                data-lang={code}
-                onClick={() => setLang(code)}
-                className={`min-w-8 rounded-full px-2 text-[0.68rem] font-black ${
-                  lang === code ? "bg-ink text-white" : "text-neutral-500"
-                }`}
-              >
-                {code.toUpperCase()}
-              </button>
-            ))}
           </div>
         </div>
       ) : null}

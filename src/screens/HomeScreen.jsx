@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
@@ -67,16 +68,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
       <PremiumCareCard t={t} aspectClass="aspect-[345/226]" imageWidthClass="w-[85.5%]" />
 
       <div className="mt-5 flex items-center gap-2">
-        <label className="grid min-h-12 flex-1 grid-cols-[auto_1fr] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
-          <Icon name="Search" className="h-5 w-5" />
-          <input
-            type="search"
-            value={state.search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder={t("searchPlaceholder")}
-            className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
-          />
-        </label>
+        <HomeSearchInput value={state.search} onSearch={onSearch} t={t} />
         <button
           type="button"
           onClick={onExplore}
@@ -366,6 +358,44 @@ function PremiumCareCard({ t, aspectClass, imageWidthClass }) {
         <p className="mt-[2.5cqw] text-[3cqw] leading-snug text-white/90">{t("heroCopy")}</p>
       </div>
     </section>
+  );
+}
+
+// Home search box with LOCAL input state + a debounced URL write, so typing stays
+// responsive instead of replacing the route (and re-ranking) on every keystroke.
+// The URL `value` stays the source of truth: we re-sync the input when it changes
+// externally (back button / cleared) and commit immediately on Enter.
+function HomeSearchInput({ value, onSearch, t }) {
+  const [draft, setDraft] = useState(value);
+  const timerRef = useRef(null);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const onDraftChange = (next) => {
+    setDraft(next);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => onSearch(next), 250);
+  };
+
+  return (
+    <label className="grid min-h-12 flex-1 grid-cols-[auto_1fr] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
+      <Icon name="Search" className="h-5 w-5" />
+      <input
+        type="search"
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            clearTimeout(timerRef.current);
+            onSearch(event.currentTarget.value);
+          }
+        }}
+        placeholder={t("searchPlaceholder")}
+        className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
+      />
+    </label>
   );
 }
 

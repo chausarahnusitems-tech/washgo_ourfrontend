@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { userLocation } from "../data/catalog.js";
-import { getVisibleShops } from "../lib/booking.js";
+import { useGeolocation } from "../lib/useGeolocation.js";
+import { getBestShopMatch, rankShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -23,14 +24,38 @@ const filterChips = [
 ];
 
 export function SearchBar({ value, onChange, t, activeFav, onToggleFav }) {
+  // Local input state keeps typing responsive: the heavy URL write (route replace
+  // + re-rank) is debounced (~250ms) or committed on Enter, rather than firing on
+  // every keystroke. The URL `value` stays the source of truth — we re-sync the
+  // input when it changes externally (e.g. cleared / back button / deep link).
+  const [draft, setDraft] = useState(value);
+  const timerRef = useRef(null);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const commit = (next) => {
+    clearTimeout(timerRef.current);
+    onChange(next);
+  };
+  const onDraftChange = (next) => {
+    setDraft(next);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => onChange(next), 250);
+  };
+
   return (
     <div className="flex min-h-12 items-center gap-2 rounded-full bg-neutral-100 pl-4 pr-1.5 text-neutral-500">
       <label className="flex min-w-0 flex-1 items-center gap-3">
         <Icon name="Search" className="h-5 w-5 shrink-0" />
         <input
           type="search"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={draft}
+          onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") commit(event.currentTarget.value);
+          }}
           placeholder={t("searchPlaceholder")}
           className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
         />
@@ -141,12 +166,27 @@ export function ExploreScreen() {
 /* the list (images 1 & 2).                                            */
 /* ------------------------------------------------------------------ */
 function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClearFilter, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
-  const visibleShops = useMemo(() => {
-    // `allShops` is in the deps so this recomputes when the DB catalog arrives
-    // after first paint. `activeFav` keeps only saved places when toggled on.
-    const list = getVisibleShops(state.search, state.activeService);
-    return state.activeFav ? list.filter((s) => (state.favorites ?? []).includes(s.id)) : list;
-  }, [state.search, state.activeService, state.activeFav, state.favorites, allShops]);
+  // MAP set: filtered ONLY by the service chip + favourites toggle — NOT the text
+  // query — so typing re-centers the map instead of making non-matching pins
+  // vanish. `allShops` is in the deps so this recomputes when the DB catalog
+  // arrives after first paint.
+  const mapShops = useMemo(() => {
+    const byService = state.activeService
+      ? allShops.filter((s) => (s.services ?? []).includes(state.activeService))
+      : allShops;
+    return state.activeFav ? byService.filter((s) => (state.favorites ?? []).includes(s.id)) : byService;
+  }, [state.activeService, state.activeFav, state.favorites, allShops]);
+  // LIST set: the elastic/typo-tolerant ranked results for the sidebar.
+  const listShops = useMemo(() => {
+    const list = rankShops(mapShops, state.search, null);
+    return state.search ? list : mapShops;
+  }, [mapShops, state.search]);
+  // Re-center the map on the single best text match (without selecting it).
+  const bestMatchId = useMemo(
+    () => (state.search ? getBestShopMatch(mapShops, state.search, null) : null),
+    [mapShops, state.search]
+  );
+  const liveLocation = useGeolocation(userLocation);
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
   return (
@@ -158,8 +198,8 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
           <ListYourCarWashButton />
         </div>
         <div className="grid gap-3 overflow-y-auto px-4 py-4">
-          {visibleShops.length ? (
-            visibleShops.map((shop) => (
+          {listShops.length ? (
+            listShops.map((shop) => (
               <ShopCard
                 key={shop.id}
                 shop={shop}
@@ -177,10 +217,11 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
       <div className="relative isolate min-w-0 flex-1">
         <InteractiveMap
           className="h-full w-full"
-          shops={visibleShops}
+          shops={mapShops}
           selectedId={state.mapShop}
+          focusShopId={bestMatchId}
           onSelectShop={onSelectMapShop}
-          userLocation={userLocation}
+          userLocation={liveLocation}
         />
 
         {selectedShop ? (
@@ -207,22 +248,38 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
 /* (images 3 & 4).                                                     */
 /* ------------------------------------------------------------------ */
 function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, onClearFilter, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
-  const visibleShops = useMemo(() => {
-    // `allShops` is in the deps so this recomputes when the DB catalog arrives
-    // after first paint. `activeFav` keeps only saved places when toggled on.
-    const list = getVisibleShops(state.search, state.activeService);
-    return state.activeFav ? list.filter((s) => (state.favorites ?? []).includes(s.id)) : list;
-  }, [state.search, state.activeService, state.activeFav, state.favorites, allShops]);
+  // MAP set: filtered ONLY by the service chip + favourites toggle — NOT the text
+  // query — so typing re-centers the map instead of making non-matching pins
+  // vanish. `allShops` is in the deps so this recomputes when the DB catalog
+  // arrives after first paint.
+  const mapShops = useMemo(() => {
+    const byService = state.activeService
+      ? allShops.filter((s) => (s.services ?? []).includes(state.activeService))
+      : allShops;
+    return state.activeFav ? byService.filter((s) => (state.favorites ?? []).includes(s.id)) : byService;
+  }, [state.activeService, state.activeFav, state.favorites, allShops]);
+  // LIST set: the elastic/typo-tolerant ranked results for the drawer list.
+  const listShops = useMemo(() => {
+    const list = rankShops(mapShops, state.search, null);
+    return state.search ? list : mapShops;
+  }, [mapShops, state.search]);
+  // Re-center the map on the single best text match (without selecting it).
+  const bestMatchId = useMemo(
+    () => (state.search ? getBestShopMatch(mapShops, state.search, null) : null),
+    [mapShops, state.search]
+  );
+  const liveLocation = useGeolocation(userLocation);
   const selectedShop = allShops.find((shop) => shop.id === state.mapShop) ?? null;
 
   return (
     <section className="relative h-full overflow-hidden bg-white">
       <InteractiveMap
         className="absolute inset-0"
-        shops={visibleShops}
+        shops={mapShops}
         selectedId={state.mapShop}
+        focusShopId={bestMatchId}
         onSelectShop={onSelectMapShop}
-        userLocation={userLocation}
+        userLocation={liveLocation}
       />
 
       <IconButton
@@ -259,8 +316,8 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
             <ListYourCarWashButton />
           </div>
           <div className="grid gap-3 overflow-y-auto px-4 pb-5">
-            {visibleShops.length ? (
-              visibleShops.map((shop) => (
+            {listShops.length ? (
+              listShops.map((shop) => (
                 <ShopCard key={shop.id} shop={shop} t={t} onSelect={onSelectMapShop} />
               ))
             ) : (
