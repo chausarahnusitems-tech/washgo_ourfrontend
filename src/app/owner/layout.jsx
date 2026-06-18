@@ -13,8 +13,10 @@ export default function OwnerLayout({ children }) {
   const router = useRouter();
 
   const role = auth.profile?.role;
-  // In demo mode there are no roles/owners — send to the customer app.
-  const allowed = mode === "backend" && role === "owner";
+  // In demo mode there are no roles/owners — send to the customer app. Admins are
+  // allowed in too: a platform admin can also own and run a shop (e.g. the Prisma
+  // hub) through the owner dashboard while keeping their moderation powers.
+  const allowed = mode === "backend" && (role === "owner" || role === "admin");
 
   useEffect(() => {
     if (auth.loading) return;

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Check, MapPin, MessageCircle, Phone, Store, UserCheck, X } from "lucide-react";
+import { BadgeCheck, Calendar, Check, MapPin, MessageCircle, Phone, Store, UserCheck, X } from "lucide-react";
 import { useAdminApplications } from "../../lib/admin/useAdminApplications.js";
 import { Button } from "../../components/ui/Button.jsx";
 import { cx } from "../../lib/cx.js";
@@ -139,6 +139,17 @@ export function AdminClaimsScreen() {
                     <strong className="text-ink">{item.person?.full_name || "Unnamed user"}</strong>{" "}
                     ({item.person?.email || "no email"})
                   </p>
+                  {item.createdAt ? (
+                    <p className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
+                      <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                      Submitted{" "}
+                      {new Date(item.createdAt).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric"
+                      })}
+                    </p>
+                  ) : null}
                   {item.phone ? (
                     <p className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
                       <Phone className="h-3.5 w-3.5" aria-hidden="true" />

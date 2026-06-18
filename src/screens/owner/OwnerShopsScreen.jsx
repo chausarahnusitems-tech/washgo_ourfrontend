@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, Plus, Send, Store, Trash2, Undo2 } from "lucide-react";
+import { LayoutDashboard, Pencil, Plus, Send, Store, Trash2, Undo2 } from "lucide-react";
 import { useOwnerShops } from "../../lib/owner/useOwnerShops.js";
 import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
 import { Button } from "../../components/ui/Button.jsx";
@@ -60,7 +60,7 @@ export function OwnerShopsScreen() {
                 key={shop.id}
                 className="rounded-2xl border border-black/5 bg-white p-4"
               >
-                <div className="flex items-start gap-3">
+                <Link href={`/owner/shops/${shop.id}`} className="flex items-start gap-3">
                   <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-neutral-100">
                     {shop.image_url ? (
                       <img src={shop.image_url} alt="" className="h-full w-full object-cover" />
@@ -82,10 +82,16 @@ export function OwnerShopsScreen() {
                       From {formatVnd(shop.starting_price)} · {shop.serviceIds?.length ?? 0} services
                     </p>
                   </div>
-                </div>
+                </Link>
 
                 <div className="mt-3 flex flex-wrap gap-2 border-t border-black/5 pt-3">
                   <Link href={`/owner/shops/${shop.id}`}>
+                    <Button className="min-h-9 px-3 text-sm">
+                      <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                      Manage
+                    </Button>
+                  </Link>
+                  <Link href={`/owner/shops/${shop.id}?tab=details`}>
                     <Button variant="subtle" className="min-h-9 px-3 text-sm">
                       <Pencil className="h-4 w-4" aria-hidden="true" />
                       Edit

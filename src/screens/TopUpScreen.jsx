@@ -18,8 +18,12 @@ export function TopUpScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t, state, requireAuth } = useApp();
-  const [amount, setAmount] = useState(100000);
-  const [custom, setCustom] = useState("");
+  // A booking that can't be afforded passes ?amount=<shortfall> so the user lands
+  // on the exact top-up they need pre-filled (item 7).
+  const presetAmount = Math.round(Number(searchParams.get("amount")) || 0);
+  const hasPreset = presetAmount > 0;
+  const [amount, setAmount] = useState(hasPreset ? presetAmount : 100000);
+  const [custom, setCustom] = useState(hasPreset && !presets.includes(presetAmount) ? String(presetAmount) : "");
 
   // Where to return after a successful top-up. Defaults to the account page, but
   // the booking flow passes ?next=/shops/<id>/book so the user lands back on the

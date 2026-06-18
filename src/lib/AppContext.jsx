@@ -10,6 +10,7 @@ import {
   addFavorite,
   fetchBookings,
   fetchCatalog,
+  fetchCoupon,
   fetchFavorites,
   fetchTransactions,
   removeFavorite,
@@ -19,8 +20,11 @@ import {
   rpcUpdateBooking
 } from "./data/api.js";
 import {
+  getCouponDiscount,
   getCurrentShop,
+  getDiscount,
   getSelectedDateLabel,
+  getSubtotal,
   getTotal,
   initialState,
   toggleItem
@@ -44,9 +48,22 @@ function blankState() {
     pendingVoucher: false,
     bookings: [],
     favorites: [],
-    booking: null
+    booking: null,
+    // No demo vehicle defaults in backend mode — a real user fills these in (and
+    // the profile-completion reward depends on them actually being empty first).
+    vehicle: { model: "", plate: "", notes: "" },
+    promo: null
   };
 }
+
+// Promo/referral codes available in demo mode (mirrors the seeded public.coupons
+// rows so the offline demo can validate codes without a backend round-trip).
+const DEMO_COUPONS = {
+  WASHGO10: { code: "WASHGO10", percent: 10, amountOff: 0, description: "10% off your wash" },
+  SEASON15: { code: "SEASON15", percent: 15, amountOff: 0, description: "Seasonal 15% off" },
+  SHINE10: { code: "SHINE10", percent: 10, amountOff: 0, description: "10% off detailing" },
+  CLEAN20K: { code: "CLEAN20K", percent: 0, amountOff: 20000, description: "20.000₫ off your wash" }
+};
 
 // Restore persisted demo state so refreshing mid-flow keeps tokens, stamps and
 // the active booking. Only used in demo mode (backend mode is DB-driven).
@@ -298,6 +315,79 @@ export function AppProvider({ children }) {
     setState((prev) => (prev.voucher ? { ...prev, pendingVoucher: true } : prev));
   }, []);
 
+  // ---- Promo / referral codes --------------------------------------------
+
+  // Validate a code and stash the resulting coupon so checkout can price it. The
+  // server re-validates and re-prices on confirm, so a tampered client can't pay
+  // less. Returns true when the code is accepted.
+  const applyPromo = useCallback(
+    async (code) => {
+      const clean = String(code ?? "").trim().toUpperCase();
+      if (!clean) return false;
+      if (demo) {
+        const coupon = DEMO_COUPONS[clean];
+        if (!coupon) return false;
+        setState((prev) => ({ ...prev, promo: coupon }));
+        return true;
+      }
+      try {
+        const coupon = await fetchCoupon(supabase, clean);
+        if (!coupon) return false;
+        setState((prev) => ({ ...prev, promo: coupon }));
+        return true;
+      } catch (error) {
+        console.error("[washgo] fetchCoupon failed", error);
+        return false;
+      }
+    },
+    [demo, supabase]
+  );
+
+  const clearPromo = useCallback(() => setState((prev) => ({ ...prev, promo: null })), []);
+
+  // ---- Profile-completion reward -----------------------------------------
+
+  // Has the user filled in the personal + vehicle details the free-wash reward
+  // needs? Mirrors the server's profile_is_complete (name, phone, model, plate).
+  const profileComplete = Boolean(
+    String(auth.profile?.full_name || "").trim() &&
+      String(auth.profile?.phone || "").trim() &&
+      String(auth.profile?.car_model || state.vehicle?.model || "").trim() &&
+      String(state.vehicle?.plate || "").trim()
+  );
+  const profileRewardClaimed = Boolean(auth.profile?.profile_reward_claimed);
+
+  // Claim the one-time free-wash voucher once the profile is complete. The server
+  // re-validates and is idempotent; returns true when a voucher was newly granted.
+  const claimProfileReward = useCallback(async () => {
+    if (demo) {
+      let granted = false;
+      setState((prev) => {
+        if (prev.voucher) return prev;
+        granted = true;
+        return { ...prev, voucher: true };
+      });
+      return granted;
+    }
+    if (!supabase || !auth.user) return false;
+    try {
+      const { data, error } = await supabase.rpc("complete_profile_reward");
+      if (error) throw error;
+      const voucher = Boolean(data?.voucher);
+      const stamps = data?.stamps;
+      setState((prev) => ({ ...prev, voucher, stamps: stamps ?? prev.stamps }));
+      setAuth((prev) =>
+        prev.profile
+          ? { ...prev, profile: { ...prev.profile, voucher, profile_reward_claimed: true } }
+          : prev
+      );
+      return Boolean(data?.granted);
+    } catch (error) {
+      console.error("[washgo] complete_profile_reward failed", error);
+      return false;
+    }
+  }, [demo, supabase, auth.user]);
+
   // ---- Wallet -------------------------------------------------------------
 
   const topUpFunds = useCallback(
@@ -365,9 +455,12 @@ export function AppProvider({ children }) {
         let ok = false;
         setState((prev) => {
           const ids = serviceIdsArg ?? prev.selectedServices;
-          const baseTotal = getTotal(prev.selectedPlan, ids);
-          if (!baseTotal) return prev;
+          const subtotal = getSubtotal(ids);
+          if (subtotal <= 0) return prev;
           const redeeming = Boolean(prev.pendingVoucher && prev.voucher);
+          const membershipDiscount = getDiscount(prev.selectedPlan, ids);
+          const couponDiscount = redeeming ? 0 : getCouponDiscount(prev.promo, subtotal, membershipDiscount);
+          const baseTotal = Math.max(0, subtotal - membershipDiscount - couponDiscount);
           const charge = redeeming ? 0 : baseTotal;
           if (charge > prev.funds) return prev;
           ok = true;
@@ -395,6 +488,7 @@ export function AppProvider({ children }) {
               voucher: false,
               pendingVoucher: false,
               stamps: 0,
+              promo: null,
               booking,
               bookings: [booking, ...prev.bookings]
             };
@@ -405,6 +499,7 @@ export function AppProvider({ children }) {
             funds: prev.funds - charge,
             stamps: nextStamps,
             voucher: nextStamps >= 5,
+            promo: null,
             booking,
             bookings: [booking, ...prev.bookings]
           };
@@ -423,7 +518,8 @@ export function AppProvider({ children }) {
           date: resolveBookingIso(state.selectedDate),
           slot: state.selectedTime,
           serviceIds,
-          useVoucher
+          useVoucher,
+          couponCode: useVoucher ? null : state.promo?.code
         });
         const bookings = await fetchBookings(supabase, auth.user.id);
         const booking = bookings.find((b) => b.id === res.booking_id) ?? bookings[0] ?? null;
@@ -433,6 +529,7 @@ export function AppProvider({ children }) {
           stamps: res.stamps,
           voucher: res.voucher,
           pendingVoucher: useVoucher ? false : prev.pendingVoucher,
+          promo: null,
           bookings,
           booking
         }));
@@ -448,7 +545,7 @@ export function AppProvider({ children }) {
         return false;
       }
     },
-    [demo, supabase, auth.user, state.selectedServices, state.selectedDate, state.selectedTime, state.pendingVoucher, state.voucher, refreshTransactions]
+    [demo, supabase, auth.user, state.selectedServices, state.selectedDate, state.selectedTime, state.pendingVoucher, state.voucher, state.promo, refreshTransactions]
   );
 
   const updateBooking = useCallback(
@@ -746,6 +843,12 @@ export function AppProvider({ children }) {
       cancelBooking,
       deleteBooking,
       redeemVoucher,
+      applyPromo,
+      clearPromo,
+      promo: state.promo,
+      profileComplete,
+      profileRewardClaimed,
+      claimProfileReward,
       toggleFavorite,
       resetDemo
     }),
@@ -776,6 +879,11 @@ export function AppProvider({ children }) {
       cancelBooking,
       deleteBooking,
       redeemVoucher,
+      applyPromo,
+      clearPromo,
+      profileComplete,
+      profileRewardClaimed,
+      claimProfileReward,
       toggleFavorite,
       resetDemo
     ]

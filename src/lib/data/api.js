@@ -16,7 +16,7 @@ export async function fetchCatalog(supabase) {
   const [shopsRes, servicesRes, plansRes] = await Promise.all([
     supabase
       .from("shops")
-      .select("*, shop_services(service_id)")
+      .select("*, shop_services(service_id), shop_photos(url, sort_order, is_cover)")
       .eq("status", "approved")
       .eq("published", true),
     supabase.from("services").select("*").order("price"),
@@ -76,16 +76,39 @@ export async function rpcTopUp(supabase, amount, note = "Wallet top-up") {
   return unwrap(await supabase.rpc("top_up", { p_amount: amount, p_note: note }));
 }
 
-export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceIds, useVoucher }) {
+export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceIds, useVoucher, couponCode }) {
   return unwrap(
     await supabase.rpc("create_booking", {
       p_shop_id: shopId,
       p_date: date,
       p_slot: slot,
       p_service_ids: serviceIds,
-      p_use_voucher: Boolean(useVoucher)
+      p_use_voucher: Boolean(useVoucher),
+      p_coupon_code: couponCode || null
     })
   );
+}
+
+// Validate a promo/referral code against the readable coupons table (RLS allows
+// public select). Returns { code, percent, amountOff, description } or null when
+// the code is unknown or expired.
+export async function fetchCoupon(supabase, code) {
+  const clean = String(code ?? "").trim().toUpperCase();
+  if (!clean) return null;
+  const { data, error } = await supabase
+    .from("coupons")
+    .select("code, description, percent, amount_off, expires_at")
+    .eq("code", clean)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  if (data.expires_at && new Date(data.expires_at) < new Date(new Date().toDateString())) return null;
+  return {
+    code: data.code,
+    percent: data.percent ?? 0,
+    amountOff: data.amount_off ?? 0,
+    description: data.description ?? ""
+  };
 }
 
 export async function rpcUpdateBooking(supabase, { bookingId, date, slot, serviceIds }) {
@@ -131,7 +154,11 @@ const SHOP_WRITE_COLUMNS = [
   "name", "district", "address", "phone", "starting_price", "wait_minutes",
   "hours", "is_open", "promo", "lat", "lng", "image_url", "image_position",
   // Phase 5: structured hours + per-slot capacity (published is RPC-only).
-  "open_time", "close_time", "max_cars_per_slot", "slot_minutes"
+  "open_time", "close_time", "max_cars_per_slot", "slot_minutes",
+  // Promo video URL is owner-writable; video_feature_until is RPC-gated (paid).
+  "promo_video_url",
+  // Per-weekday opening hours (jsonb).
+  "weekly_hours"
 ];
 
 function pickShopColumns(payload) {
@@ -279,6 +306,79 @@ export async function uploadShopPhoto(supabase, shopId, file) {
   const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
   const url = `${pub.publicUrl}?t=${Date.now()}`;
   return updateShop(supabase, shopId, { image_url: url });
+}
+
+// ---- Shop photo gallery (multiple images per shop) -------------------------
+
+export async function fetchShopPhotos(supabase, shopId) {
+  return unwrap(
+    await supabase
+      .from("shop_photos")
+      .select("*")
+      .eq("shop_id", shopId)
+      .order("is_cover", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true })
+  );
+}
+
+// Upload one gallery photo (distinct path per file so it never overwrites a
+// previous one) and record it in shop_photos. The first photo a shop gets is
+// auto-promoted to cover (and mirrored to shops.image_url for fast card reads).
+export async function addShopPhoto(supabase, shopId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const rand = Math.random().toString(36).slice(2, 10);
+  const path = `${shopId}/gallery/${Date.now()}-${rand}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from("shop-photos")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (upErr) throw upErr;
+  const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
+  const url = `${pub.publicUrl}?t=${Date.now()}`;
+
+  const existing = await fetchShopPhotos(supabase, shopId);
+  const isFirst = existing.length === 0;
+  const row = unwrap(
+    await supabase
+      .from("shop_photos")
+      .insert({ shop_id: shopId, url, sort_order: existing.length, is_cover: isFirst })
+      .select("*")
+      .single()
+  );
+  if (isFirst) await supabase.from("shops").update({ image_url: url }).eq("id", shopId);
+  return row;
+}
+
+export async function removeShopPhoto(supabase, photoId) {
+  return unwrap(await supabase.from("shop_photos").delete().eq("id", photoId));
+}
+
+// Promote one photo to cover: clear the flag on the rest, set it here, and mirror
+// the url onto shops.image_url (the denormalised cover the cards read).
+export async function setCoverPhoto(supabase, shopId, photoId, url) {
+  await supabase.from("shop_photos").update({ is_cover: false }).eq("shop_id", shopId);
+  unwrap(await supabase.from("shop_photos").update({ is_cover: true }).eq("id", photoId));
+  return updateShop(supabase, shopId, { image_url: url });
+}
+
+// ---- Promo video (paid feature) -------------------------------------------
+
+// Upload a promo video to the shop-videos bucket and point promo_video_url at it.
+export async function uploadShopVideo(supabase, shopId, file) {
+  const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+  const path = `${shopId}/promo.${ext}`;
+  const { error } = await supabase.storage
+    .from("shop-videos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("shop-videos").getPublicUrl(path);
+  const url = `${pub.publicUrl}?t=${Date.now()}`;
+  return updateShop(supabase, shopId, { promo_video_url: url });
+}
+
+// Buy/extend the paid promo-video feature (charges the owner's wallet).
+export async function rpcBuyShopVideoFeature(supabase, shopId) {
+  return unwrap(await supabase.rpc("buy_shop_video_feature", { p_shop_id: shopId }));
 }
 
 // Bookings made at the owner's shops (read-only — RLS grants select, not write).
@@ -532,18 +632,50 @@ export async function fetchCustomServices(supabase, shopId) {
   );
 }
 
-export async function addCustomService(supabase, shopId, { name, price, isOffer }) {
+export async function addCustomService(supabase, shopId, { name, price, isOffer, imageUrl }) {
   return unwrap(
     await supabase
       .from("shop_custom_services")
-      .insert({ shop_id: shopId, name, price: Math.round(price), is_offer: Boolean(isOffer) })
+      .insert({
+        shop_id: shopId,
+        name,
+        price: Math.round(price),
+        is_offer: Boolean(isOffer),
+        image_url: imageUrl ?? null
+      })
       .select("*")
       .single()
   );
 }
 
+// Patch an existing custom service (e.g. attach/replace its image).
+export async function updateCustomService(supabase, id, patch) {
+  const allowed = {};
+  if ("name" in patch) allowed.name = patch.name;
+  if ("price" in patch) allowed.price = Math.round(patch.price);
+  if ("isOffer" in patch) allowed.is_offer = Boolean(patch.isOffer);
+  if ("imageUrl" in patch) allowed.image_url = patch.imageUrl ?? null;
+  return unwrap(
+    await supabase.from("shop_custom_services").update(allowed).eq("id", id).select("*").single()
+  );
+}
+
 export async function removeCustomService(supabase, id) {
   return unwrap(await supabase.from("shop_custom_services").delete().eq("id", id));
+}
+
+// Upload a per-service image to the shop-photos bucket under
+// '<shopId>/services/<serviceId>.<ext>' (covered by the bucket's owner RLS) and
+// return its public URL.
+export async function uploadServiceImage(supabase, shopId, serviceId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${shopId}/services/${serviceId}.${ext}`;
+  const { error } = await supabase.storage
+    .from("shop-photos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
+  return `${pub.publicUrl}?t=${Date.now()}`;
 }
 
 // Per-slot availability for a shop+date (counts + cap + closed). RLS-safe RPC.
@@ -674,6 +806,15 @@ export async function fetchConversation(supabase, conversationId) {
     person = p ?? null;
   }
   return mapConversationRow(data, person);
+}
+
+// For a shop owner messaging a customer: resolve the customer's name/phone for a
+// booking thread they own the shop of (profiles RLS is self-only, so this goes
+// through a SECURITY DEFINER RPC). Returns { full_name, phone } | null.
+export async function fetchConversationCustomer(supabase, conversationId) {
+  return unwrap(
+    await supabase.rpc("get_conversation_customer", { p_conv: conversationId })
+  );
 }
 
 export async function fetchMessages(supabase, conversationId) {

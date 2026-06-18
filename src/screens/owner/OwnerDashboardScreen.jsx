@@ -11,24 +11,11 @@ import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
 import { Button } from "../../components/ui/Button.jsx";
 import { formatVnd } from "./format.js";
 
-const STATUS_ORDER = ["draft", "pending", "approved", "suspended"];
-const STATUS_LABELS = {
-  draft: "Drafts",
-  pending: "Pending review",
-  approved: "Approved",
-  suspended: "Suspended"
-};
-
 export function OwnerDashboardScreen() {
   const { auth } = useApp();
   const { shops, loading } = useOwnerShops();
   const supabase = useMemo(() => createClient(), []);
   const name = auth.profile?.full_name || "there";
-
-  const counts = STATUS_ORDER.reduce((acc, status) => {
-    acc[status] = shops.filter((s) => s.status === status).length;
-    return acc;
-  }, {});
 
   // Aggregate bookings across all the owner's shops for revenue + counts.
   const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
@@ -79,31 +66,29 @@ export function OwnerDashboardScreen() {
           </span>
           <p className="mt-2 font-display text-3xl font-black">{formatVnd(revenue)}</p>
         </div>
-        <div className="rounded-2xl border border-black/5 bg-white p-5">
+        <Link
+          href="/owner/bookings"
+          className="rounded-2xl border border-black/5 bg-white p-5 transition hover:border-wash-300 hover:bg-wash-50/40"
+        >
           <span className="flex items-center gap-1.5 text-sm text-neutral-500">
             <CalendarClock className="h-4 w-4" aria-hidden="true" />
             Upcoming bookings
           </span>
           <p className="mt-2 font-display text-3xl font-black text-ink">{upcomingCount}</p>
-        </div>
-        <div className="rounded-2xl border border-black/5 bg-white p-5">
+          <span className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-wash-600">
+            View bookings →
+          </span>
+        </Link>
+        <Link
+          href="/owner/bookings"
+          className="rounded-2xl border border-black/5 bg-white p-5 transition hover:border-wash-300 hover:bg-wash-50/40"
+        >
           <span className="flex items-center gap-1.5 text-sm text-neutral-500">
             <Store className="h-4 w-4" aria-hidden="true" />
             Total bookings
           </span>
           <p className="mt-2 font-display text-3xl font-black text-ink">{bookings.length}</p>
-        </div>
-      </section>
-
-      <section className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {STATUS_ORDER.map((status) => (
-          <div key={status} className="rounded-2xl border border-black/5 bg-white p-4">
-            <p className="text-2xl font-black text-ink">{loading ? "–" : counts[status]}</p>
-            <p className="mt-1 text-xs font-semibold text-neutral-500">
-              {STATUS_LABELS[status]}
-            </p>
-          </div>
-        ))}
+        </Link>
       </section>
 
       <section className="mt-8">

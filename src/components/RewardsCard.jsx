@@ -1,9 +1,12 @@
+import { Fragment } from "react";
 import { Button } from "./ui/Button.jsx";
 
 const washProgressCarIcon = "/icons/wash-progress-car.svg";
 
 export function RewardsCard({ stamps, voucher, t, onUse }) {
   const totalStamps = 5;
+  // Six cars: five stamp slots plus the sixth "free wash" car the 5 unlock.
+  const slots = totalStamps + 1;
 
   return (
     <section className="rounded-xl border border-black/20 bg-white p-3">
@@ -12,18 +15,21 @@ export function RewardsCard({ stamps, voucher, t, onUse }) {
         <p className="mt-1 text-xs text-neutral-500">{t("rewardsCopy")}</p>
       </div>
       <div className="mt-4 overflow-visible pt-5">
-        <div className="relative flex w-full max-w-[314px] items-center overflow-visible">
+        <div className="relative flex w-full max-w-[360px] items-center overflow-visible">
           <span className="absolute right-0 top-[-22px] whitespace-nowrap text-[11px] font-black text-[#F04242]">
             {t("freeWash")}!
           </span>
-          {Array.from({ length: totalStamps }, (_, index) => {
-            const isActive = index < stamps;
+          {Array.from({ length: slots }, (_, index) => {
+            const isFreeWash = index === totalStamps; // the 6th car = the free wash
+            const isActive = isFreeWash ? voucher : index < stamps;
 
             return (
-              <div key={index} className="flex shrink-0 items-center">
+              <Fragment key={index}>
                 <span
-                  className="grid h-[34px] w-[34px] shrink-0 place-items-center overflow-hidden rounded-full"
-                  aria-label={`${index + 1} / ${totalStamps}`}
+                  className={`grid h-[34px] w-[34px] shrink-0 place-items-center overflow-hidden rounded-full ${
+                    isFreeWash ? "ring-2 ring-[#9db000] ring-offset-1" : ""
+                  }`}
+                  aria-label={isFreeWash ? t("freeWash") : `${index + 1} / ${totalStamps}`}
                 >
                   <img
                     src={washProgressCarIcon}
@@ -31,13 +37,13 @@ export function RewardsCard({ stamps, voucher, t, onUse }) {
                     className={`h-[34px] w-[34px] ${isActive ? "" : "grayscale brightness-[1.56]"}`}
                   />
                 </span>
-                {index < totalStamps - 1 ? (
+                {index < slots - 1 ? (
                   <span
-                    className={`mx-2 h-[2px] w-5 shrink-0 ${index < stamps ? "bg-[#F04242]" : "bg-[#9E9E9E]"}`}
+                    className={`mx-1 h-[2px] flex-1 ${index < stamps ? "bg-[#F04242]" : "bg-[#9E9E9E]"}`}
                     aria-hidden="true"
                   />
                 ) : null}
-              </div>
+              </Fragment>
             );
           })}
         </div>

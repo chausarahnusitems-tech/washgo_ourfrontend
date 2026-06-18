@@ -42,12 +42,38 @@ function formatVndPlain(amount) {
     .replace(/,/g, ".")}₫`;
 }
 
+// Gallery photos for a shop: cover first, then by sort order. Falls back to the
+// single denormalised image_url so shops without gallery rows still show a photo.
+function adaptShopPhotos(row) {
+  const photos = (row.shop_photos ?? [])
+    .slice()
+    .sort((a, b) => (b.is_cover === a.is_cover ? (a.sort_order ?? 0) - (b.sort_order ?? 0) : b.is_cover ? 1 : -1))
+    .map((p) => p.url)
+    .filter(Boolean);
+  if (row.image_url && !photos.includes(row.image_url)) photos.unshift(row.image_url);
+  return photos;
+}
+
 // DB shop row (+ joined service ids) -> the catalog's shop shape.
 export function adaptShop(row, origin = userLocation) {
   const km = haversineKm(origin, { lat: row.lat, lng: row.lng });
+  const imageUrls = adaptShopPhotos(row);
+  // The promo video only counts as live while the paid feature hasn't lapsed.
+  const videoActive = Boolean(
+    row.promo_video_url &&
+      row.video_feature_until &&
+      new Date(row.video_feature_until) >= new Date(new Date().toDateString())
+  );
   return {
     id: row.id,
     ownerId: row.owner_id ?? null,
+    // Customer-facing cover + gallery (owner-uploaded). `imageUrl` is the cover;
+    // `imageUrls` is the full gallery (cover first). Cards fall back to the static
+    // hero when these are empty.
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
+    // Paid promo video (only surfaced while the feature is active).
+    promoVideoUrl: videoActive ? row.promo_video_url : null,
     // 'partner' = a real bookable Washgo shop; 'directory' = an imported, info-only
     // listing (business hasn't partnered yet — shown on the map but not bookable).
     listingType: row.listing_type ?? "partner",
@@ -74,7 +100,10 @@ export function adaptShop(row, origin = userLocation) {
     openTime: row.open_time ?? null,
     closeTime: row.close_time ?? null,
     slotMinutes: row.slot_minutes ?? 60,
-    maxCarsPerSlot: row.max_cars_per_slot ?? 1
+    maxCarsPerSlot: row.max_cars_per_slot ?? 1,
+    // Per-weekday opening hours (jsonb keyed by day-of-week 0=Sun..6=Sat), or null
+    // to use the single open/close default.
+    weeklyHours: row.weekly_hours ?? null
   };
 }
 

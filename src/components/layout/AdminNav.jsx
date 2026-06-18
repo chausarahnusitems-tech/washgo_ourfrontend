@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BadgeCheck, ClipboardCheck, Flag, LogOut, MessageCircle, ShieldCheck, Star, Store } from "lucide-react";
+import { ArrowLeft, BadgeCheck, ClipboardCheck, Flag, LayoutDashboard, LogOut, MessageCircle, ShieldCheck, Star, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
@@ -66,6 +66,13 @@ export function AdminNav() {
 
         <div className="mt-auto flex flex-col gap-1 border-t border-black/10 pt-3">
           <p className="truncate px-3 text-xs font-semibold text-neutral-500">{name}</p>
+          <Link
+            href="/owner"
+            className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-neutral-600 transition hover:bg-neutral-100"
+          >
+            <LayoutDashboard className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+            Owner area
+          </Link>
           <button
             type="button"
             onClick={() => enterCustomerPortal(router)}
@@ -111,6 +118,13 @@ export function AdminNav() {
               </Link>
             );
           })}
+          <Link
+            href="/owner"
+            aria-label="Owner area"
+            className="grid h-10 w-10 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-100"
+          >
+            <LayoutDashboard className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+          </Link>
           <button
             type="button"
             onClick={() => enterCustomerPortal(router)}

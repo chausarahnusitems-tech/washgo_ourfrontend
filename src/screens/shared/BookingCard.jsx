@@ -25,7 +25,11 @@ export function BookingCard({ booking, shop, t, onClick }) {
 
   const inner = (
     <>
-      <img src={images.hero} alt={shop.name} className="h-[84px] w-[84px] rounded-xl object-cover object-[58%_center]" />
+      <img
+        src={shop.imageUrl || images.hero}
+        alt={shop.name}
+        className={`h-[84px] w-[84px] rounded-xl object-cover ${shop.imageUrl ? "object-center" : "object-[58%_center]"}`}
+      />
       <div className="min-w-0">
         <span className={`inline-flex rounded-full px-2 py-0.5 text-[0.6rem] font-black uppercase tracking-wide ${statusTones[status]}`}>
           {statusLabel}

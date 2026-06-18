@@ -22,6 +22,7 @@ import {
   deleteConversation,
   hideConversation,
   fetchConversation,
+  fetchConversationCustomer,
   fetchConversationReview,
   fetchConversations,
   fetchMessages,
@@ -149,6 +150,11 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [showArchived, setShowArchived] = useState(false);
   const [existingReview, setExistingReview] = useState(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  // For a shop thread viewed by the shop OWNER (not the customer/creator): the
+  // customer's name/phone, resolved via a SECURITY DEFINER RPC since profiles
+  // RLS is self-only. Empty for the customer's own view or on error (the RPC
+  // throws for non-owners).
+  const [convCustomer, setConvCustomer] = useState(null);
   const [recording, setRecording] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
   const [showReport, setShowReport] = useState(false);
@@ -359,6 +365,32 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, activeConv?.id, activeConv?.status, isAdmin, uid, activeConv?.createdBy]);
+
+  // Resolve the customer's identity for a shop thread when the viewer is the
+  // shop OWNER (i.e. a shop thread they didn't create). The RPC throws for
+  // non-owners, so swallow errors and leave it empty — this never runs for the
+  // customer's own view (createdBy === uid).
+  useEffect(() => {
+    let active = true;
+    const isOwnerOfShopThread =
+      !!activeConv && activeConv.kind === "shop" && activeConv.createdBy && activeConv.createdBy !== uid;
+    if (!supabase || !isOwnerOfShopThread) {
+      setConvCustomer(null);
+      return undefined;
+    }
+    setConvCustomer(null);
+    fetchConversationCustomer(supabase, activeConv.id)
+      .then((c) => {
+        if (active) setConvCustomer(c);
+      })
+      .catch(() => {
+        if (active) setConvCustomer(null);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, activeConv?.id, activeConv?.kind, activeConv?.createdBy, uid]);
 
   // Tidy up any in-flight recording when the component unmounts.
   useEffect(() => {
@@ -680,6 +712,13 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       [t("detailPerson"), `${person}${c.creatorRole ? ` · ${roleLabel(c.creatorRole, t)}` : ""}`],
       [t("detailCreated"), created]
     ];
+    // Owner viewing a shop thread: surface the customer resolved via RPC.
+    if (convCustomer?.full_name) {
+      rows.push([
+        t("customer"),
+        `${convCustomer.full_name}${convCustomer.phone ? ` · ${convCustomer.phone}` : ""}`
+      ]);
+    }
     return (
       <div className="p-4">
         <h4 className="font-display text-sm font-black uppercase tracking-wide text-neutral-500">
@@ -841,9 +880,16 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                   <button type="button" onClick={() => setActiveId(null)} className="sm:hidden" aria-label="Back">
                     <MessageCircle className="h-5 w-5 text-neutral-500" />
                   </button>
-                  <h3 className="min-w-0 flex-1 truncate font-display text-base font-black">
-                    {convLabel(activeConv ?? {}, uid, t, locale)}
-                  </h3>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate font-display text-base font-black">
+                      {convLabel(activeConv ?? {}, uid, t, locale)}
+                    </h3>
+                    {convCustomer?.full_name && (
+                      <p className="truncate text-xs font-semibold text-neutral-500">
+                        {t("customer")}: {convCustomer.full_name}
+                      </p>
+                    )}
+                  </div>
                   {canSeeDetails && (
                     <button
                       type="button"
@@ -1027,10 +1073,14 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                 {isReviewTarget &&
                   (existingReview ? (
                     <p className="border-t border-black/10 bg-white px-4 py-3 text-center text-sm font-semibold text-wash-600">
-                      {t("reviewThanks")}
+                      {t(activeConv?.kind === "shop" ? "rateShopThanks" : "reviewThanks")}
                     </p>
                   ) : (
-                    <ConversationReviewPrompt onSubmit={onSubmitReview} busy={reviewBusy} />
+                    <ConversationReviewPrompt
+                      onSubmit={onSubmitReview}
+                      busy={reviewBusy}
+                      isShop={activeConv?.kind === "shop"}
+                    />
                   ))}
               </>
             ) : recording ? (

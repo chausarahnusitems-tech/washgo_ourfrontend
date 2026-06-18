@@ -79,6 +79,8 @@ export const initialState = {
   selectedServices: ["exterior", "interior"],
   selectedDate: "today",
   selectedTime: "12.00PM",
+  // Applied promo/referral coupon at checkout ({ code, percent, amountOff }) or null.
+  promo: null,
   vehicle: {
     model: "BMW 1234",
     plate: "51G-248.19",
@@ -128,6 +130,18 @@ export function getTotal(selectedPlan, selectedServiceIds) {
   return Math.max(0, getSubtotal(selectedServiceIds) - getDiscount(selectedPlan, selectedServiceIds));
 }
 
+// Discount from an applied promo/referral coupon ({ percent, amountOff }), priced
+// the same way the server does it: a fixed amount wins over a percent, percents
+// round to the nearest 1,000₫, and the discount never exceeds the remaining
+// subtotal (after any membership discount already taken).
+export function getCouponDiscount(coupon, subtotal, alreadyDiscounted = 0) {
+  if (!coupon || subtotal <= 0) return 0;
+  let value = 0;
+  if (coupon.amountOff > 0) value = coupon.amountOff;
+  else if (coupon.percent > 0) value = Math.round((subtotal * coupon.percent) / 100 / 1000) * 1000;
+  return Math.max(0, Math.min(value, subtotal - alreadyDiscounted));
+}
+
 // Format a VND amount with dot thousands separators and the ₫ suffix, matching
 // local convention (e.g. 50000 -> "50.000₫").
 export function formatVnd(amount) {
@@ -157,21 +171,123 @@ export function foldAccents(value) {
     .toLowerCase();
 }
 
+// Bounded Levenshtein: true when `a` and `b` are within `max` edits. Early-exits
+// on a length gap so it stays cheap for the per-keystroke search.
+function withinEdits(a, b, max) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > max) return false;
+  const m = a.length;
+  const n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array(n + 1);
+  for (let i = 1; i <= m; i += 1) {
+    curr[0] = i;
+    let best = curr[0];
+    for (let j = 1; j <= n; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      if (curr[j] < best) best = curr[j];
+    }
+    if (best > max) return false; // whole row already over budget
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n] <= max;
+}
+
+function wordMatchesToken(word, token) {
+  if (word.includes(token) || token.includes(word)) return true;
+  return withinEdits(word, token, token.length <= 4 ? 1 : 2);
+}
+
+// Elastic relevance score for a shop against a folded query. Matches across
+// name + district + address + services, tolerant of small typos. Returns a higher
+// number for stronger matches, or -1 for no match. Empty query scores 0.
+export function shopMatchScore(shop, foldedNeedle) {
+  if (!foldedNeedle) return 0;
+  const nameF = foldAccents(shop.name);
+  const hayFull = foldAccents(
+    `${shop.name} ${shop.district} ${shop.address} ${(shop.services ?? []).join(" ")}`
+  );
+  if (hayFull.includes(foldedNeedle)) {
+    if (nameF.includes(foldedNeedle)) return 200 - nameF.indexOf(foldedNeedle);
+    return 100;
+  }
+  // Token-AND match with per-token typo tolerance ("thoa dien" -> "thao dien").
+  const tokens = foldedNeedle.split(/\s+/).filter(Boolean);
+  const words = hayFull.split(/\s+/).filter(Boolean);
+  let matched = 0;
+  for (const token of tokens) {
+    if (words.some((word) => wordMatchesToken(word, token))) matched += 1;
+    else return -1; // every query token must land somewhere
+  }
+  return 30 + matched;
+}
+
+// The list of shops for the sidebar/results, filtered by the service chip and the
+// fuzzy text query, ranked best-match first. (The MAP keeps all pins — callers
+// pass the unfiltered set there and use getBestShopMatch for centering.)
 export function getVisibleShops(search, serviceId = null) {
   const { shops } = getCatalog();
-  const needle = foldAccents((search ?? "").trim());
+  return rankShops(shops, search, serviceId);
+}
 
-  return shops.filter((shop) => {
-    if (serviceId && !shop.services.includes(serviceId)) return false;
-    if (!needle) return true;
-    return foldAccents(`${shop.name} ${shop.district} ${shop.address} ${shop.services.join(" ")}`).includes(
-      needle
-    );
-  });
+export function rankShops(shops, search, serviceId = null) {
+  const needle = foldAccents((search ?? "").trim());
+  const scoped = serviceId ? shops.filter((s) => (s.services ?? []).includes(serviceId)) : shops;
+  if (!needle) return scoped;
+  return scoped
+    .map((shop) => ({ shop, score: shopMatchScore(shop, needle) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.shop);
+}
+
+// The single best-matching shop id for a query (used to re-center/highlight the
+// map without hiding the other pins). Null when the query is empty or unmatched.
+export function getBestShopMatch(shops, search, serviceId = null) {
+  const needle = foldAccents((search ?? "").trim());
+  if (!needle) return null;
+  let best = null;
+  let bestScore = 0;
+  for (const shop of shops) {
+    if (serviceId && !(shop.services ?? []).includes(serviceId)) continue;
+    const score = shopMatchScore(shop, needle);
+    if (score > bestScore) {
+      bestScore = score;
+      best = shop;
+    }
+  }
+  return best?.id ?? null;
 }
 
 export function toggleItem(items, item) {
   return items.includes(item) ? items.filter((value) => value !== item) : [...items, item];
+}
+
+// Day-of-week labels (0=Sun..6=Sat), matching JS Date.getDay() and the
+// weekly_hours jsonb keys. Used by the owner editor and the booking calendar.
+export const WEEKDAY_KEYS = ["0", "1", "2", "3", "4", "5", "6"];
+export const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// The effective opening hours for a shop on a given date. Prefers the per-weekday
+// `weeklyHours` entry, falls back to the single open/close default. Returns null
+// when the shop is closed that weekday (so the caller offers no slots).
+export function getDayHours(shop, dateId) {
+  const fallback = { open: shop?.openTime ?? null, close: shop?.closeTime ?? null };
+  const day = parseIsoDate(resolveBookingIso(dateId));
+  if (!day || !shop?.weeklyHours) return fallback;
+  const entry = shop.weeklyHours[String(day.getDay())];
+  if (!entry) return fallback;
+  if (entry.closed) return null; // closed this weekday
+  return { open: entry.open || fallback.open, close: entry.close || fallback.close };
+}
+
+// True when the shop's weekly schedule marks the given date's weekday as closed.
+export function isWeeklyClosed(shop, dateId) {
+  if (!shop?.weeklyHours) return false;
+  const day = parseIsoDate(resolveBookingIso(dateId));
+  if (!day) return false;
+  return Boolean(shop.weeklyHours[String(day.getDay())]?.closed);
 }
 
 // Generate "HH:MM" booking slot labels from a shop's structured hours, stepping

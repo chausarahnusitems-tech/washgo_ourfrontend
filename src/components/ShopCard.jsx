@@ -35,7 +35,11 @@ export function ShopCard({ shop, t, onSelect, active = false }) {
         onClick={() => onSelect(shop.id)}
         className="relative h-[84px] overflow-hidden rounded-xl bg-neutral-100"
       >
-        <img src={images.hero} alt={`${shop.name} ${t("washBayAlt")}`} className={`h-full w-full object-cover ${shop.imagePosition}`} />
+        <img
+          src={shop.imageUrl || images.hero}
+          alt={`${shop.name} ${t("washBayAlt")}`}
+          className={`h-full w-full object-cover ${shop.imageUrl ? "object-center" : shop.imagePosition}`}
+        />
         {shop.promo ? (
           <span className="absolute -bottom-1 -right-1 rounded-full bg-wash-500 px-2 py-1 text-[0.56rem] font-black text-white">
             {t("freeWash")}
