@@ -37,6 +37,7 @@ export function BookingDetailScreen({ bookingId }) {
 
   const [editing, setEditing] = useState(false);
   const [showLive, setShowLive] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -121,12 +122,14 @@ export function BookingDetailScreen({ bookingId }) {
     }));
 
   const saveEdit = async () => {
-    if (!canSave) return;
+    if (!canSave || saving) return; // guard against double-submit
     if (requireAuth) {
       router.push("/login");
       return;
     }
+    setSaving(true);
     const ok = await updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
+    setSaving(false);
     if (ok) setEditing(false);
   };
 
@@ -323,9 +326,9 @@ export function BookingDetailScreen({ bookingId }) {
               {!affordable ? (
                 <p className="text-center text-xs font-bold text-wash-600">{t("insufficientBalance")}</p>
               ) : null}
-              <Button onClick={saveEdit} disabled={!canSave} className="min-h-[52px] w-full rounded-2xl">
+              <Button onClick={saveEdit} disabled={!canSave || saving} className="min-h-[52px] w-full rounded-2xl">
                 <Icon name="Check" className="h-5 w-5" />
-                {t("saveChanges")}
+                {saving ? "…" : t("saveChanges")}
               </Button>
               <Button variant="secondary" onClick={() => setEditing(false)}>{t("discardChanges")}</Button>
             </>

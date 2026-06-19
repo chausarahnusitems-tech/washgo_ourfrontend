@@ -181,6 +181,12 @@ function withServiceIds(row) {
 
 function slugify(name) {
   const base = String(name ?? "")
+    // Fold Vietnamese (and other) diacritics first so "Thảo Điền" -> "thao-dien"
+    // instead of dropping the accented letters and leaving fragments.
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")

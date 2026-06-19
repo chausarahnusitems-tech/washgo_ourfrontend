@@ -29,6 +29,9 @@ import {
   initialState,
   toggleItem
 } from "./booking.js";
+import { userLocation } from "../data/catalog.js";
+import { formatDistanceKm, haversineKm } from "./data/adapters.js";
+import { useGeolocation } from "./useGeolocation.js";
 
 // Bump the version suffix when the persisted shape changes so returning users
 // pick up the new defaults/seed data instead of stale state.
@@ -95,6 +98,21 @@ export function AppProvider({ children }) {
   // Reference catalog (shops/services/plans). Seeded from the store (catalog.js
   // fallback) and replaced by the DB fetch in backend mode.
   const [catalog, setCatalogState] = useState(() => getCatalog());
+  // The device's real location (falls back to the seed point until granted),
+  // used to recompute shop distances so cards/lists reflect where the user
+  // actually is rather than a fixed seed point. (#8)
+  const liveLocation = useGeolocation(userLocation);
+  const liveCatalog = useMemo(() => {
+    if (!liveLocation || !catalog.shops?.length) return catalog;
+    return {
+      ...catalog,
+      shops: catalog.shops.map((s) => {
+        if (s.lat == null || s.lng == null) return s;
+        const km = haversineKm(liveLocation, { lat: s.lat, lng: s.lng });
+        return { ...s, distanceKm: km, distance: formatDistanceKm(km) };
+      })
+    };
+  }, [catalog, liveLocation]);
   // Wallet ledger for the signed-in user (backend mode only).
   const [transactions, setTransactions] = useState([]);
 
@@ -225,21 +243,23 @@ export function AppProvider({ children }) {
     };
   }, [demo, supabase]);
 
-  // Backend: persist the editable profile prefs (plan / vehicle / language).
-  // Balances (funds/stamps/voucher) are authoritative on the server and only
-  // move through the RPCs, so they are deliberately NOT written here.
+  // Backend: persist the editable profile prefs (vehicle / language) only.
+  // The membership tier (selected_plan) and balances (funds/stamps/voucher) are
+  // server-authoritative and move ONLY through the RPCs (start_membership /
+  // create_booking / …); writing selected_plan from this client-derived state
+  // could clobber a valid membership back to 'basic' (#11), and the column is no
+  // longer client-writable anyway.
   useEffect(() => {
     if (demo || !supabase || !auth.user) return;
     supabase
       .from("profiles")
       .update({
-        selected_plan: state.selectedPlan,
         vehicle: state.vehicle,
         lang: state.lang
       })
       .eq("id", auth.user.id)
       .then(() => {});
-  }, [demo, supabase, auth.user, state.selectedPlan, state.vehicle, state.lang]);
+  }, [demo, supabase, auth.user, state.vehicle, state.lang]);
 
   // Demo: persist everything to localStorage as the offline source of truth.
   useEffect(() => {
@@ -480,6 +500,8 @@ export function AppProvider({ children }) {
             plan: prev.selectedPlan,
             freeWash: redeeming,
             earnedStamp: !redeeming,
+            // Remember the coupon basis so an edit re-prices with it (#12).
+            coupon: !redeeming && couponDiscount > 0 ? prev.promo : null,
             status: "upcoming"
           };
           if (redeeming) {
@@ -560,7 +582,15 @@ export function AppProvider({ children }) {
           const dateId = patch.dateId ?? existing.dateId;
           const time = patch.time ?? existing.time;
           const plan = existing.plan ?? prev.selectedPlan;
-          const newTotal = getTotal(plan, services);
+          // Re-apply the booking's original coupon and free-wash status so an
+          // unrelated date/time edit doesn't silently re-charge it (#12).
+          const membershipDiscount = getDiscount(plan, services);
+          const couponDiscount = existing.coupon
+            ? getCouponDiscount(existing.coupon, getSubtotal(services), membershipDiscount)
+            : 0;
+          const newTotal = existing.freeWash
+            ? 0
+            : Math.max(0, getSubtotal(services) - membershipDiscount - couponDiscount);
           const date = dateId
             ? getSelectedDateLabel(dateId, (key) => copy[prev.lang][key] ?? copy.en[key] ?? key)
             : existing.date;
@@ -625,14 +655,17 @@ export function AppProvider({ children }) {
           const updated = { ...existing, status: "cancelled" };
           const bookings = [...prev.bookings];
           bookings[index] = updated;
+          // A free-wash booking consumed the voucher (stamps were already reset on
+          // redeem). On cancel, give the voucher back rather than destroying the
+          // hard-earned reward (#10). Otherwise reverse the stamp it granted.
           const nextStamps = Math.max(0, prev.stamps - (existing.earnedStamp ? 1 : 0));
-          const stillUnlocked = nextStamps >= 5;
+          const voucher = existing.freeWash ? true : nextStamps >= 5;
           return {
             ...prev,
             funds: prev.funds + existing.total,
             stamps: nextStamps,
-            voucher: stillUnlocked,
-            pendingVoucher: stillUnlocked ? prev.pendingVoucher : false,
+            voucher,
+            pendingVoucher: existing.freeWash ? false : voucher ? prev.pendingVoucher : false,
             bookings,
             booking: prev.booking?.id === id ? updated : prev.booking
           };
@@ -676,13 +709,14 @@ export function AppProvider({ children }) {
           const wasUpcoming = (existing.status ?? "upcoming") === "upcoming";
           const refund = wasUpcoming ? existing.total : 0;
           const nextStamps = Math.max(0, prev.stamps - (wasUpcoming && existing.earnedStamp ? 1 : 0));
-          const stillUnlocked = nextStamps >= 5;
+          // Restore the voucher when deleting an upcoming free-wash booking (#10).
+          const voucher = wasUpcoming && existing.freeWash ? true : nextStamps >= 5;
           return {
             ...prev,
             funds: prev.funds + refund,
             stamps: nextStamps,
-            voucher: stillUnlocked,
-            pendingVoucher: stillUnlocked ? prev.pendingVoucher : false,
+            voucher,
+            pendingVoucher: wasUpcoming && existing.freeWash ? false : voucher ? prev.pendingVoucher : false,
             bookings: prev.bookings.filter((item) => item.id !== id),
             booking: prev.booking?.id === id ? null : prev.booking
           };
@@ -822,7 +856,8 @@ export function AppProvider({ children }) {
       auth,
       mode: demo ? "demo" : "backend",
       requireAuth,
-      catalog,
+      catalog: liveCatalog,
+      liveLocation,
       transactions,
       refreshTransactions,
       signOut,
@@ -858,7 +893,8 @@ export function AppProvider({ children }) {
       auth,
       demo,
       requireAuth,
-      catalog,
+      liveCatalog,
+      liveLocation,
       transactions,
       refreshTransactions,
       signOut,

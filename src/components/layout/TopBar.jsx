@@ -7,7 +7,11 @@ import { icons } from "../../assets.js";
 import { useApp } from "../../lib/AppContext.jsx";
 
 export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = false }) {
-  const { t } = useApp();
+  const { t, auth, state } = useApp();
+  // Only show the membership chip for an ACTUAL premium member, with their real
+  // renewal date — not a hardcoded one for everyone (#9).
+  const membershipUntil = auth?.profile?.membership_until ?? null;
+  const isMember = state?.selectedPlan === "premium";
 
   return (
     <header className="mb-4 flex min-h-12 items-start justify-between gap-3">
@@ -34,11 +38,11 @@ export function TopBar({ compact = false, title, subtitle, onBack, hideLogo = fa
         ) : null}
       </div>
 
-      {!compact ? (
+      {!compact && isMember ? (
         <div className="flex shrink-0 items-center gap-2">
           <div className="text-right text-[0.68rem] leading-tight">
             <span className="block text-neutral-500">{t("memberUntil")}</span>
-            <strong className="block text-ink">{t("dateUntil")}</strong>
+            <strong className="block text-ink">{membershipUntil || t("active")}</strong>
           </div>
         </div>
       ) : null}

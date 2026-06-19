@@ -327,6 +327,15 @@ function WeeklyHoursEditor({ shop, update }) {
   }
 
   async function save() {
+    // Closing must be after opening for every open day (mirrors the single-hours
+    // form's guard) — otherwise the window is invalid and silently ignored.
+    for (const [key, label] of WEEK_ORDER) {
+      const d = days[key];
+      if (!d.closed && !(d.close > d.open)) {
+        setStatus(`${label}: closing time must be after opening time.`);
+        return;
+      }
+    }
     setStatus("saving");
     const weekly_hours = {};
     for (const [key] of WEEK_ORDER) {
