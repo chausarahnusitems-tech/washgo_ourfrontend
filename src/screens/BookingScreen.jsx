@@ -20,6 +20,7 @@ import { addMonths, buildMonthGrid, formatMonthLabel, resolveBookingIso, toIsoDa
 import { useApp } from "../lib/AppContext.jsx";
 import { createClient } from "../lib/supabase/client.js";
 import { fetchSlotAvailability } from "../lib/data/api.js";
+import { startCheckout } from "../lib/data/billing.js";
 import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -216,6 +217,36 @@ export function BookingScreen({ shopId }) {
     }
     setBookError(t("bookingFailed"));
     setSubmitting(false); // re-enable only if the booking failed
+  };
+
+  // Pay this booking directly by card / QR (PayOS) instead of from the wallet.
+  // The server creates a pending_payment booking and the webhook confirms it; on
+  // success the browser is redirected to the hosted gateway page.
+  const onPayCard = async () => {
+    if (submitting) return;
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    setSubmitting(true);
+    setBookError(null);
+    const err = await startCheckout({
+      kind: "booking",
+      shopId: shop.id,
+      date: resolveBookingIso(state.selectedDate),
+      slot: state.selectedTime,
+      serviceIds: effectiveSelected,
+      couponCode: promo?.code || null,
+      next: `/shops/${shop.id}/book`
+    });
+    if (err) {
+      setSubmitting(false);
+      setBookError(
+        err === "payments_not_configured"
+          ? "Card payment isn't set up yet — please pay from your wallet."
+          : t("bookingFailed")
+      );
+    }
   };
 
   const selectedServices = getSelectedServices(effectiveSelected);
@@ -544,15 +575,34 @@ export function BookingScreen({ shopId }) {
         ) : null}
 
         {/* Book button lives in the scroll flow (not a pinned footer) with
-            bottom padding below, so it reads as the end of the form. */}
+            bottom padding below, so it reads as the end of the form. The wallet
+            path pays from the balance; the card path (backend, charge > 0) hands
+            off to the hosted PayOS checkout. */}
         <Button onClick={onConfirm} disabled={!total || insufficient || submitting || dateClosed || !slotSelectable} className="mt-5 min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
-            <strong>{t("book")}</strong>
+            <strong>{mode === "backend" && !redeeming && charge > 0 ? t("payFromWallet") : t("book")}</strong>
             <small className="text-white/85">{getSelectedDateLabel(state.selectedDate, t)}, {state.selectedTime}</small>
           </span>
           <Icon name="ArrowLeft" className="h-5 w-5 rotate-180" />
         </Button>
+
+        {mode === "backend" && !redeeming && charge > 0 ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onPayCard}
+            disabled={submitting || dateClosed || !slotSelectable}
+            className="mt-3 min-h-[54px] w-full rounded-full px-4"
+          >
+            <Icon name="WalletCards" className="h-5 w-5" />
+            <span className="grid flex-1 text-left">
+              <strong>{t("payByCard")}</strong>
+              <small className="text-neutral-500">{formatVnd(charge)} · {t("securedByPayos")}</small>
+            </span>
+            <Icon name="ArrowLeft" className="h-5 w-5 rotate-180" />
+          </Button>
+        ) : null}
         </div>
       </section>
   );

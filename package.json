@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@payos/node": "^2.0.5",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
     "lucide-react": "^0.468.0",

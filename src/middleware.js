@@ -36,11 +36,12 @@ export async function middleware(request) {
 }
 
 export const config = {
-  // Run on all paths except static assets, image files, and the OAuth callback.
-  // The callback exchanges the PKCE code CLIENT-SIDE and then full-reloads to its
-  // destination (where this middleware runs normally), so there's no server-side
-  // session to refresh on that request — skip it.
+  // Run on all paths except static assets, image files, the OAuth callback, and
+  // the PayOS webhook. The callback exchanges the PKCE code CLIENT-SIDE and then
+  // full-reloads to its destination (where this middleware runs normally), so
+  // there's no server-side session to refresh on that request. The webhook is an
+  // unauthenticated server-to-server call (no cookies) — skip the session work.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|api/payos/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"
   ]
 };

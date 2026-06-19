@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
+import { startCheckout } from "../lib/data/billing.js";
 import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -17,7 +18,9 @@ const presets = [50000, 100000, 200000, 500000, 1000000, 2000000];
 export function TopUpScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t, state, requireAuth } = useApp();
+  const { t, state, requireAuth, mode, topUpFunds } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   // A booking that can't be afforded passes ?amount=<shortfall> so the user lands
   // on the exact top-up they need pre-filled (item 7).
   const presetAmount = Math.round(Number(searchParams.get("amount")) || 0);
@@ -45,18 +48,34 @@ export function TopUpScreen() {
   const valid = amount > 0;
   const newBalance = state.funds + (valid ? amount : 0);
 
-  const onAdd = () => {
-    if (!valid) return;
+  const onAdd = async () => {
+    if (!valid || busy) return;
     if (requireAuth) {
       router.push("/login");
       return;
     }
-    // Route through the placeholder payment page, which performs the top-up on
-    // success and then returns to `next` (the booking flow, or the account page).
     const returnTo = next || "/account";
-    router.push(
-      `/payment?purpose=topup&amount=${amount}&next=${encodeURIComponent(returnTo)}`
-    );
+    setBusy(true);
+    setError("");
+
+    // Demo: no gateway — bump the local balance and return.
+    if (mode === "demo") {
+      await topUpFunds(amount);
+      router.push(returnTo);
+      return;
+    }
+
+    // Backend: hand off to the hosted PayOS checkout. The webhook credits the
+    // wallet; on success the browser redirects away (nothing below runs).
+    const err = await startCheckout({ kind: "topup", amount, next: returnTo });
+    if (err) {
+      setBusy(false);
+      setError(
+        err === "payments_not_configured"
+          ? "Payments aren't set up yet — please try again later."
+          : "Couldn't start the payment. Please try again."
+      );
+    }
   };
 
   return (
@@ -108,7 +127,7 @@ export function TopUpScreen() {
             </label>
           </section>
 
-          {/* Payment method (fake) */}
+          {/* Payment method */}
           <section className="mt-5 rounded-xl border border-black/15 bg-white p-3">
             <h2 className="font-display text-base font-black">{t("paymentMethod")}</h2>
             <div className="mt-3 flex items-center gap-3">
@@ -116,8 +135,12 @@ export function TopUpScreen() {
                 <Icon name="WalletCards" className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <strong className="block">{t("walletMethod")}</strong>
-                <span className="block text-xs text-neutral-500">{t("demoTopUpNote")}</span>
+                <strong className="block">
+                  {mode === "demo" ? t("walletMethod") : "VietQR · bank · e-wallet"}
+                </strong>
+                <span className="block text-xs text-neutral-500">
+                  {mode === "demo" ? t("demoTopUpNote") : "Secured by PayOS — pay by QR, bank app or e-wallet."}
+                </span>
               </div>
             </div>
           </section>
@@ -130,9 +153,10 @@ export function TopUpScreen() {
             <span className="text-neutral-500">{t("newBalance")}</span>
             <strong className="font-display text-lg font-black text-wash-500">{formatVnd(newBalance)}</strong>
           </div>
-          <Button onClick={onAdd} disabled={!valid} className="min-h-[54px] w-full rounded-full">
+          {error ? <p className="mb-3 text-sm font-bold text-wash-500">{error}</p> : null}
+          <Button onClick={onAdd} disabled={!valid || busy} className="min-h-[54px] w-full rounded-full">
             <Icon name="Plus" className="h-5 w-5" />
-            {`${t("addFunds")} ${valid ? formatVnd(amount) : ""}`}
+            {busy ? "…" : `${t("addFunds")} ${valid ? formatVnd(amount) : ""}`}
           </Button>
         </div>
       </footer>
