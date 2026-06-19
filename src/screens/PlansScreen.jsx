@@ -20,8 +20,10 @@ const PERKS = [
 
 export function PlansScreen() {
   const router = useRouter();
-  const { t, state, auth, mode } = useApp();
+  const { t, state, auth, mode, startMembership } = useApp();
   const onBack = useBackOr("/account");
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
   const supabase = useMemo(() => createClient(), []);
 
   // Member if there's a renewal date (backend) or the premium tier is active
@@ -43,10 +45,27 @@ export function PlansScreen() {
     };
   }, [supabase]);
 
-  // Join routes through the placeholder payment page, which charges the wallet
-  // and calls start_membership on success.
-  const onJoin = () =>
-    router.push(`/payment?purpose=membership&amount=${MEMBERSHIP_FEE}&next=${encodeURIComponent("/plans")}`);
+  // Membership is wallet-charged (no gateway recurring). If the wallet can't
+  // cover the fee, send the user to top up first (funded by PayOS) and return
+  // here; otherwise charge the wallet via start_membership.
+  const onJoin = async () => {
+    if (joining) return;
+    if (mode === "backend" && !auth.user) {
+      router.push("/login");
+      return;
+    }
+    if (mode === "backend" && state.funds < MEMBERSHIP_FEE) {
+      router.push(
+        `/topup?amount=${MEMBERSHIP_FEE - state.funds}&next=${encodeURIComponent("/plans")}`
+      );
+      return;
+    }
+    setJoining(true);
+    setJoinError("");
+    const ok = await startMembership();
+    setJoining(false);
+    if (!ok) setJoinError(t("membershipError"));
+  };
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[1fr_auto] bg-white lg:bg-mist">
@@ -120,14 +139,15 @@ export function PlansScreen() {
 
       <footer className="border-t border-black/20 bg-white p-4">
         <div className="mx-auto w-full max-w-xl">
+          {joinError ? <p className="mb-3 text-sm font-bold text-wash-500">{joinError}</p> : null}
           {isMember ? (
-            <Button onClick={onJoin} variant="secondary" className="w-full rounded-2xl">
+            <Button onClick={onJoin} variant="secondary" disabled={joining} className="w-full rounded-2xl">
               <Check className="h-5 w-5" />
-              {t("renewMembership")}
+              {joining ? "…" : t("renewMembership")}
             </Button>
           ) : (
-            <Button onClick={onJoin} className="w-full rounded-2xl" disabled={mode === "backend" && !auth.user}>
-              {mode === "backend" && !auth.user ? t("signInToJoin") : t("joinMembership")}
+            <Button onClick={onJoin} className="w-full rounded-2xl" disabled={joining || (mode === "backend" && !auth.user)}>
+              {mode === "backend" && !auth.user ? t("signInToJoin") : joining ? "…" : t("joinMembership")}
             </Button>
           )}
         </div>

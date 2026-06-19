@@ -16,7 +16,6 @@ import {
   removeFavorite,
   rpcCancelBooking,
   rpcCreateBooking,
-  rpcTopUp,
   rpcUpdateBooking
 } from "./data/api.js";
 import {
@@ -301,6 +300,47 @@ export function AppProvider({ children }) {
     );
   }, []);
 
+  // Re-pull server-authoritative account state (profile balances, bookings,
+  // wallet history). Used after returning from the hosted PayOS checkout, where
+  // the WEBHOOK — not the browser — has applied the change. Returns the fresh
+  // profile so the success page can poll until the top-up/booking has landed.
+  const refreshAccount = useCallback(async () => {
+    if (demo || !supabase) return null;
+    // Resolve the user directly rather than via auth.user — this is called right
+    // after the cross-site PayOS redirect, where onAuthStateChange may not have
+    // repopulated React auth state yet (otherwise it would read a stale null and
+    // skip the refresh, leaving the success page showing pre-payment balances).
+    const { data: { user } = {} } = await supabase.auth.getUser();
+    if (!user) return null;
+    try {
+      const [{ data: profile }, bookings, ledger] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        fetchBookings(supabase, user.id),
+        fetchTransactions(supabase, user.id)
+      ]);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const activeMember =
+        profile?.selected_plan === "premium" &&
+        profile?.membership_until &&
+        profile.membership_until >= todayIso;
+      if (profile) setAuth((prev) => ({ ...prev, profile }));
+      setTransactions(ledger);
+      setState((prev) => ({
+        ...prev,
+        funds: profile?.funds ?? prev.funds,
+        stamps: profile?.stamps ?? prev.stamps,
+        voucher: profile?.voucher ?? prev.voucher,
+        pendingVoucher: profile?.pending_voucher ?? prev.pendingVoucher,
+        selectedPlan: activeMember ? "premium" : "basic",
+        bookings
+      }));
+      return profile ?? null;
+    } catch (error) {
+      console.error("[washgo] refreshAccount failed", error);
+      return null;
+    }
+  }, [demo, supabase]);
+
   // ---- Preference actions (identical in both modes) -----------------------
 
   const setLang = useCallback((lang) => {
@@ -419,18 +459,14 @@ export function AppProvider({ children }) {
         setState((prev) => ({ ...prev, funds: prev.funds + Math.round(value) }));
         return true;
       }
-      if (!auth.user) return false;
-      try {
-        const newBalance = await rpcTopUp(supabase, Math.round(value));
-        syncBalances({ funds: newBalance });
-        await refreshTransactions();
-        return true;
-      } catch (error) {
-        console.error("[washgo] top_up failed", error);
-        return false;
-      }
+      // Backend: real top-ups go through the hosted PayOS checkout (startCheckout)
+      // and are credited by the webhook — the client can no longer mint funds
+      // (top_up is revoked). Screens call startCheckout directly; this guard just
+      // catches any stray legacy caller.
+      console.warn("[washgo] topUpFunds is no-op in backend mode — use the gateway checkout");
+      return false;
     },
-    [demo, supabase, auth.user, syncBalances, refreshTransactions]
+    [demo]
   );
 
   // ---- Membership ---------------------------------------------------------
@@ -860,6 +896,7 @@ export function AppProvider({ children }) {
       liveLocation,
       transactions,
       refreshTransactions,
+      refreshAccount,
       signOut,
       updateProfile,
       uploadAvatar,
@@ -897,6 +934,7 @@ export function AppProvider({ children }) {
       liveLocation,
       transactions,
       refreshTransactions,
+      refreshAccount,
       signOut,
       updateProfile,
       uploadAvatar,

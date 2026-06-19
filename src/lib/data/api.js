@@ -39,6 +39,9 @@ export async function fetchBookings(supabase, userId) {
       .from("bookings")
       .select("*, booking_services(service_id), shops(name)")
       .eq("user_id", userId)
+      // Hide unpaid card-checkout holds — they only become real bookings once the
+      // PayOS webhook confirms them (pending_payment -> upcoming).
+      .neq("status", "pending_payment")
       .order("created_at", { ascending: false })
   );
   return rows.map((row) =>
@@ -397,6 +400,8 @@ export async function fetchOwnerBookings(supabase, shopIds) {
       .from("bookings")
       .select("*, booking_services(service_id), shops(name), conversations(id)")
       .in("shop_id", shopIds)
+      // Owners only see confirmed bookings, not unpaid card-checkout holds.
+      .neq("status", "pending_payment")
       .order("scheduled_date", { ascending: false })
   );
   return rows.map((row) => ({
