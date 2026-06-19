@@ -4,12 +4,12 @@
 -- keep paying from the wallet exactly as before.
 --
 -- The truth comes from the webhook, never the browser:
---   * topup   payment  -> top_up_for()        credits the wallet
---   * booking payment  -> mark_booking_paid()  flips pending_payment -> upcoming
+--   * topup   payment  -> settle_topup()           credits the wallet
+--   * booking payment  -> settle_booking_payment() flips pending_payment -> upcoming
 --
 -- SECURITY: top_up() was granted to `authenticated` (fine while top-ups were
 -- fake). Now that real money backs the wallet, a client must NOT be able to mint
--- funds — top_up() is revoked and replaced by the service-role-only top_up_for(),
+-- funds — top_up() is revoked and replaced by service-role-only settlement RPCs,
 -- which only the webhook (service role) can call.
 
 -- ---------------------------------------------------------------------------
@@ -38,6 +38,7 @@ create table if not exists public.payments (
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );
+alter sequence public.payos_order_code_seq owned by public.payments.order_code;
 create index if not exists payments_user_idx on public.payments (user_id, created_at desc);
 create index if not exists payments_booking_idx on public.payments (booking_id);
 
@@ -80,6 +81,8 @@ create table if not exists public.reward_ledger (
   created_at  timestamptz not null default now()
 );
 create index if not exists reward_ledger_user_idx on public.reward_ledger (user_id, created_at desc);
+create index if not exists reward_ledger_booking_idx on public.reward_ledger (booking_id);
+create index if not exists reward_ledger_payment_idx on public.reward_ledger (payment_id);
 
 alter table public.reward_ledger enable row level security;
 drop policy if exists "Users can view their own reward ledger" on public.reward_ledger;
@@ -98,7 +101,7 @@ alter table public.bookings add constraint bookings_status_check
 -- create_pending_booking — the card-payment sibling of create_booking. Runs the
 -- IDENTICAL server-side validation + pricing, but inserts the booking as
 -- 'pending_payment' and does NOT move money, award a stamp, burn the voucher, or
--- record the coupon redemption — all of that is deferred to mark_booking_paid()
+-- record the coupon redemption — all of that is deferred to settle_booking_payment()
 -- once the webhook confirms the payment. Voucher / 0-total bookings never come
 -- here (they use the wallet path).
 create or replace function public.create_pending_booking(
@@ -255,7 +258,7 @@ begin
 
   v_total := greatest(0, v_subtotal - v_discount - v_coupon_discount);
   if v_total <= 0 then
-    raise exception 'nothing to pay — use the wallet path';
+    raise exception 'nothing to pay - use the wallet path';
   end if;
 
   insert into public.bookings
