@@ -123,7 +123,9 @@ export function OwnerShopFormScreen({ shopId }) {
               {tab === "photos" && (
                 <OwnerShopPhotos shop={shop} update={owner.update} reload={owner.reload} />
               )}
-              {tab === "services" && <OwnerShopServices shop={shop} saveServices={owner.saveServices} />}
+              {tab === "services" && (
+                <OwnerShopServices shop={shop} saveServices={owner.saveServices} reload={owner.reload} />
+              )}
               {tab === "schedule" && <OwnerShopSchedule shop={shop} update={owner.update} />}
               {tab === "promo" && <OwnerShopPromoVideo shop={shop} reload={owner.reload} />}
             </div>

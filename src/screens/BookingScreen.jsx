@@ -91,6 +91,24 @@ export function BookingScreen({ shopId }) {
     };
   }, [mode, supabase, shop?.id, isoDate]);
 
+  // True when a slot is at capacity for the picked date.
+  const slotFull = (time) =>
+    Boolean(availability && (availability.counts?.[time] ?? 0) >= (availability.cap ?? 1));
+
+  // Keep selectedTime valid (#6): when the slot list / availability changes, if
+  // the current selection isn't an offered, non-full slot, snap to the first open
+  // one. Stops a stale "12.00PM" default being submitted on a structured-hours
+  // shop where no generated "HH:MM" slot matches it.
+  useEffect(() => {
+    if (weeklyClosed || availability?.closed) return;
+    const selectable = (t) => slots.includes(t) && !slotFull(t);
+    if (!selectable(state.selectedTime)) {
+      const next = slots.find((t) => !slotFull(t));
+      if (next) onTime(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots, availability, weeklyClosed, state.selectedDate, state.selectedTime]);
+
   // Booking requires a signed-in user (item 25). Gate at the entry point — send a
   // signed-out visitor to login (with a return path) instead of letting them fill
   // the whole form only to be bounced at the final tap. Wait for the session
@@ -213,6 +231,10 @@ export function BookingScreen({ shopId }) {
   const insufficient = charge > state.funds;
   // Exact amount the wallet is short by, for the top-up affordance (item 7).
   const shortfall = Math.max(0, charge - state.funds);
+  // The shop is closed for the picked date, or no valid/open slot is selected —
+  // block the Book button so we don't submit something the server will reject (#6).
+  const dateClosed = Boolean(weeklyClosed || availability?.closed);
+  const slotSelectable = slots.includes(state.selectedTime) && !slotFull(state.selectedTime);
 
   const now = new Date();
   const atCurrentMonth =
@@ -523,7 +545,7 @@ export function BookingScreen({ shopId }) {
 
         {/* Book button lives in the scroll flow (not a pinned footer) with
             bottom padding below, so it reads as the end of the form. */}
-        <Button onClick={onConfirm} disabled={!total || insufficient || submitting} className="mt-5 min-h-[54px] w-full rounded-full px-4">
+        <Button onClick={onConfirm} disabled={!total || insufficient || submitting || dateClosed || !slotSelectable} className="mt-5 min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
             <strong>{t("book")}</strong>

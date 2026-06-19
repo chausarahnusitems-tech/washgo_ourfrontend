@@ -368,10 +368,17 @@ export function AccountScreen() {
       ? `${t("memberSince")} ${formatJoined(auth.profile.created_at)}`
       : null;
 
+  // Real membership state (#9) — premium tier only counts while membership_until
+  // hasn't lapsed (AppContext already gates selectedPlan on that for backend).
+  const isMember = state.selectedPlan === "premium";
+  const membershipUntil = auth?.profile?.membership_until ?? null;
+
   const props = {
     state,
     t,
     isSignedIn,
+    isMember,
+    membershipUntil,
     showTransactions,
     displayName,
     avatarUrl,
@@ -415,7 +422,7 @@ function SignedOutPrompt({ t, onAuth }) {
 /* Mobile (original)                                                   */
 /* ------------------------------------------------------------------ */
 
-function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onLang, onHome, onPlans, onVouchers, onAuth, onRewards, onTopUp, onTransactions, onUseVoucher }) {
+function AccountMobile({ state, t, isSignedIn, isMember, membershipUntil, showTransactions, displayName, avatarUrl, memberSince, onLang, onHome, onPlans, onVouchers, onAuth, onRewards, onTopUp, onTransactions, onUseVoucher }) {
   return (
     <section className="grid h-full content-start gap-4 overflow-y-auto bg-white px-4 py-7">
       <TopBar compact title={t("account")} t={t} lang={state.lang} onLang={onLang} onHome={onHome} />
@@ -434,15 +441,24 @@ function AccountMobile({ state, t, isSignedIn, showTransactions, displayName, av
           <section className="rounded-[18px] bg-[radial-gradient(circle_at_88%_22%,rgba(255,255,255,0.35),transparent_22%),linear-gradient(135deg,#c40000,#ff1208_68%,#ff7568)] p-6 text-white">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-display text-2xl font-black">{state.selectedPlan === "premium" ? t("premium") : t("basic")} {t("member")}</h2>
-                <p className="mt-3 text-sm text-white/90">
-                  {t("memberUntil")}
-                  <br />
-                  <strong>{t("dateUntil")}</strong>
-                </p>
+                {isMember ? (
+                  <>
+                    <h2 className="font-display text-2xl font-black">{t("premium")} {t("member")}</h2>
+                    <p className="mt-3 text-sm text-white/90">
+                      {t("memberUntil")}
+                      <br />
+                      <strong>{membershipUntil || t("active")}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
+                    <p className="mt-3 text-sm text-white/90">{t("membershipPitch")}</p>
+                  </>
+                )}
               </div>
               <Button onClick={onPlans} variant="onColor" className="min-h-9 px-4 text-sm">
-                {t("upgradePlan")}
+                {isMember ? t("renewMembership") : t("joinMembership")}
               </Button>
             </div>
           </section>
@@ -512,7 +528,7 @@ function RewardTile({ title, expires, tone, t }) {
   );
 }
 
-function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, avatarUrl, memberSince, onPlans, onRewards, onAuth, onTopUp, onTransactions, onUseVoucher }) {
+function AccountDesktop({ state, t, isSignedIn, isMember, membershipUntil, showTransactions, displayName, avatarUrl, memberSince, onPlans, onRewards, onVouchers, onAuth, onTopUp, onTransactions, onUseVoucher }) {
   return (
     <section className="h-full overflow-y-auto bg-mist">
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[340px_1fr] gap-6 px-6 py-8 xl:px-10">
@@ -565,16 +581,25 @@ function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, a
               <section className="relative min-h-[150px] overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_88%_20%,rgba(255,255,255,0.3),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-7 text-white">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
-                    <p className="mt-3 text-sm text-white/90">
-                      {t("renewOn")}
-                      <br />
-                      <strong>{t("dateUntil")}</strong>
-                    </p>
-                    <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+                    {isMember ? (
+                      <>
+                        <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
+                        <p className="mt-3 text-sm text-white/90">
+                          {t("memberActiveUntil")}
+                          <br />
+                          <strong>{membershipUntil || t("active")}</strong>
+                        </p>
+                        <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+                      </>
+                    ) : (
+                      <>
+                        <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
+                        <p className="mt-3 text-sm text-white/90">{t("membershipPitch")}</p>
+                      </>
+                    )}
                   </div>
                   <Button onClick={onPlans} variant="onColor" className="min-h-9 px-4 text-sm">
-                    {t("upgradePlan")}
+                    {isMember ? t("renewMembership") : t("joinMembership")}
                   </Button>
                 </div>
               </section>
@@ -588,10 +613,7 @@ function AccountDesktop({ state, t, isSignedIn, showTransactions, displayName, a
                     {t("viewRewards")}
                   </button>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-5">
-                  <RewardTile title={t("freeCharging")} tone="green" t={t} />
-                  <RewardTile title={t("discountDetailing")} tone="red" t={t} />
-                </div>
+                <VoucherAccess count={getVouchers(state.voucher, t).length} t={t} onClick={onVouchers} />
               </section>
 
               <SettingsCard />

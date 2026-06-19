@@ -25,12 +25,14 @@ const homeServiceTiles = [
 
 export function HomeScreen() {
   const isDesktop = useIsDesktop();
-  const { t, state, setLang } = useApp();
+  const { t, state, setLang, auth } = useApp();
   const { router, searchParams, setParams } = useUrlNav();
 
   const props = {
     state: { ...state, search: searchParams.get("q") ?? "" },
     t,
+    isMember: state.selectedPlan === "premium",
+    membershipUntil: auth?.profile?.membership_until ?? null,
     onLang: setLang,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
@@ -46,6 +48,7 @@ export function HomeScreen() {
     // Rebook a specific past booking's shop (Previous Booking card).
     onRebookShop: (shopId) => router.push(shopId ? `/shops/${shopId}/book` : "/explore"),
     onBookings: () => router.push("/bookings"),
+    onPlans: () => router.push("/plans"),
     onTopUp: () => router.push("/topup")
   };
 
@@ -159,7 +162,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebookShop, onBookings }) {
+function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, onService, onBook, onRebookShop, onBookings, onPlans }) {
   const nearbyShops = getVisibleShops("");
   // Surface the user's actual next upcoming booking (seeded list), not a fake.
   const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
@@ -283,13 +286,25 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebookS
             <PremiumCareCard t={t} aspectClass="aspect-[2/1]" imageWidthClass="w-[80%]" />
 
             <section className="relative aspect-[2/1] overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_85%_20%,rgba(255,255,255,0.28),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-6 text-white">
-              <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
-              <p className="mt-3 text-sm text-white/90">
-                {t("renewOn")}
-                <br />
-                <strong>{t("dateUntil")}</strong>
-              </p>
-              <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+              {isMember ? (
+                <>
+                  <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
+                  <p className="mt-3 text-sm text-white/90">
+                    {t("memberActiveUntil")}
+                    <br />
+                    <strong>{membershipUntil || t("active")}</strong>
+                  </p>
+                  <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
+                  <p className="mt-3 text-sm text-white/90">{t("membershipPitch")}</p>
+                  <button type="button" onClick={onPlans} className="mt-4 inline-flex rounded-full bg-white/90 px-4 py-1.5 text-sm font-black text-wash-600">
+                    {t("joinMembership")}
+                  </button>
+                </>
+              )}
             </section>
           </div>
 

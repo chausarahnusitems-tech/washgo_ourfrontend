@@ -92,7 +92,9 @@ export function adaptShop(row, origin = userLocation) {
     services: row.services ?? [],
     imagePosition: row.image_position ?? "object-center",
     open: row.is_open ?? true,
-    hours: row.hours ?? "",
+    // null (not "") so the cards' `shop.hours ?? t("hours")` fallback fires for a
+    // shop with no hours, instead of rendering a blank segment.
+    hours: row.hours || null,
     promo: row.promo ?? false,
     lat: row.lat,
     lng: row.lng,

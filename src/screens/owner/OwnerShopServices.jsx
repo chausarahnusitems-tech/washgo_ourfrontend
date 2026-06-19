@@ -18,7 +18,7 @@ import { SERVICE_OPTION_GROUPS, CUSTOM_SERVICE, SERVICE_PRICE_BY_NAME } from "..
 
 // Two parts: pick from the shared catalogue (persisted to shop_services), and
 // add fully custom services (name + price, optionally flagged as an "offer").
-export function OwnerShopServices({ shop, saveServices }) {
+export function OwnerShopServices({ shop, saveServices, reload }) {
   const { catalog, t } = useApp();
   const services = catalog.services ?? [];
   const supabase = useMemo(() => createClient(), []);
@@ -90,6 +90,9 @@ export function OwnerShopServices({ shop, saveServices }) {
       setPrice("");
       setIsOffer(false);
       setPicked("");
+      // Refresh the owner shop list so customServiceCount (and the publish gate)
+      // reflect the new service without a full reload (#14).
+      reload?.();
     } catch (err) {
       console.error("[washgo] add custom service failed", err);
       window.alert(err?.message || "Could not add the service.");
@@ -102,6 +105,7 @@ export function OwnerShopServices({ shop, saveServices }) {
     try {
       await removeCustomService(supabase, id);
       setCustom((prev) => prev.filter((c) => c.id !== id));
+      reload?.();
     } catch (err) {
       console.error("[washgo] remove custom service failed", err);
     }

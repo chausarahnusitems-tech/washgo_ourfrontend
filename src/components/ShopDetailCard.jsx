@@ -92,8 +92,10 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
         await navigator.share({ title: shop.name, text: shop.address, url });
         return;
       }
-    } catch {
-      return; // user dismissed the share sheet
+    } catch (err) {
+      // Only stop on a genuine user-cancel; any other failure (permission,
+      // unsupported payload) falls through to the clipboard copy below.
+      if (err?.name === "AbortError") return;
     }
     try {
       await navigator.clipboard?.writeText(url);
