@@ -14,6 +14,7 @@ import {
   getSelectedServices,
   getSubtotal,
   getTotal,
+  isBookingElapsed,
   isWeeklyClosed
 } from "../lib/booking.js";
 import { addMonths, buildMonthGrid, formatMonthLabel, resolveBookingIso, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
@@ -69,10 +70,15 @@ export function BookingScreen({ shopId }) {
   const dayHours = getDayHours(shop, state.selectedDate);
   const weeklyClosed = isWeeklyClosed(shop, state.selectedDate);
   // Time slots: generated from the day's hours when set, else the legacy fixed
-  // list (demo / not-yet-configured shops). Empty when the shop is closed.
+  // list (demo / not-yet-configured shops). Empty when the shop is closed. On the
+  // picked day, slots whose start time has already passed are dropped, so a user
+  // can never select a time in the past (which the server would reject anyway).
   const slots = useMemo(
-    () => (dayHours ? generateSlots(dayHours.open, dayHours.close, shop?.slotMinutes) ?? times : []),
-    [dayHours?.open, dayHours?.close, shop?.slotMinutes]
+    () => {
+      const base = dayHours ? generateSlots(dayHours.open, dayHours.close, shop?.slotMinutes) ?? times : [];
+      return base.filter((time) => !isBookingElapsed({ dateId: state.selectedDate, time }));
+    },
+    [dayHours?.open, dayHours?.close, shop?.slotMinutes, state.selectedDate]
   );
 
   // Load availability for the selected date (backend only). Lets us grey out
@@ -348,6 +354,10 @@ export function BookingScreen({ shopId }) {
           {availability?.closed || weeklyClosed ? (
             <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-500">
               {t("closedOnDate")}
+            </p>
+          ) : slots.length === 0 ? (
+            <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-500">
+              {t("noSlotsToday")}
             </p>
           ) : (
             <div className="mt-3 grid grid-cols-3 gap-2">
