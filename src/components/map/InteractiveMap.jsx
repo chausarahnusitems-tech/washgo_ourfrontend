@@ -141,9 +141,18 @@ const LOCATE_ICON =
 // A maplibre IControl that snaps the map back onto the user. `getTarget` is read
 // at click time (not when the control is built) so it always recenters on the
 // latest live location, even after the puck has moved. Lives in maplibre's own
-// control group so it inherits the native button styling.
+// control group so it inherits the native button styling. `setLabel` lets the
+// owning component keep the tooltip/aria-label in sync with the active language
+// without rebuilding the control (the control itself is created only once).
 function createRecenterControl(getTarget, label) {
   return {
+    _button: null,
+    _container: null,
+    setLabel(next) {
+      if (!this._button || !next) return;
+      this._button.title = next;
+      this._button.setAttribute("aria-label", next);
+    },
     onAdd(map) {
       const container = document.createElement("div");
       container.className = "maplibregl-ctrl maplibregl-ctrl-group";
@@ -165,12 +174,14 @@ function createRecenterControl(getTarget, label) {
         });
       });
       container.appendChild(button);
+      this._button = button;
       this._container = container;
       return container;
     },
     onRemove() {
       this._container?.remove();
       this._container = null;
+      this._button = null;
     }
   };
 }
@@ -193,7 +204,10 @@ export function InteractiveMap({
   className,
   rounded = "rounded-none",
   interactive = true,
-  // Accessible label/tooltip for the recenter ("locate me") control.
+  // Opt-in "locate me" control. Off by default so picker/admin maps (which use
+  // the map to drop or inspect a pin, not to find the user) don't get it — only
+  // the Explore map enables it. `recenterLabel` is its localized tooltip/aria-label.
+  showRecenter = false,
   recenterLabel = "Recenter"
 }) {
   const containerRef = useRef(null);
@@ -224,6 +238,9 @@ export function InteractiveMap({
   // targets the live puck position rather than the value captured at init.
   const userLocationRef = useRef(userLocation);
   userLocationRef.current = userLocation;
+  // The recenter control instance, so a label effect can update its tooltip on a
+  // runtime language change without rebuilding the map.
+  const recenterControlRef = useRef(null);
 
   // Init the map once.
   useEffect(() => {
@@ -244,13 +261,15 @@ export function InteractiveMap({
         new maplibregl.NavigationControl({ showCompass: false, showZoom: true }),
         "bottom-right"
       );
+    }
+
+    if (interactive && showRecenter) {
       // "Locate me": top-right keeps it clear of the desktop detail card
       // (top-left) and the mobile bottom sheet. Reads the latest user location
-      // via ref on click.
-      map.addControl(
-        createRecenterControl(() => userLocationRef.current, recenterLabel),
-        "top-right"
-      );
+      // via ref on click; kept in a ref so the label-sync effect can reach it.
+      const recenter = createRecenterControl(() => userLocationRef.current, recenterLabel);
+      recenterControlRef.current = recenter;
+      map.addControl(recenter, "top-right");
     }
 
     if (userLocation) {
@@ -305,9 +324,18 @@ export function InteractiveMap({
       mapRef.current = null;
       markersRef.current = {};
       userMarkerRef.current = null;
+      recenterControlRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the recenter control's tooltip/aria-label in sync with the active
+  // language (the control is built once, so the init effect can't see later
+  // `recenterLabel` changes — e.g. an EN<->VI toggle or the demo-mode lang
+  // hydrating from localStorage after first paint).
+  useEffect(() => {
+    recenterControlRef.current?.setLabel(recenterLabel);
+  }, [recenterLabel]);
 
   // Follow live geolocation: move the puck and recenter once on the first real
   // fix (so the map opens centred on the user without fighting later panning).

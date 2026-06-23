@@ -223,6 +223,7 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
           focusShopId={bestMatchId}
           onSelectShop={onSelectMapShop}
           userLocation={liveLocation}
+          showRecenter
           recenterLabel={t("recenter")}
         />
 
@@ -283,6 +284,7 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
         focusShopId={bestMatchId}
         onSelectShop={onSelectMapShop}
         userLocation={liveLocation}
+        showRecenter
         recenterLabel={t("recenter")}
       />
 
