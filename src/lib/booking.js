@@ -242,6 +242,20 @@ export function rankShops(shops, search, serviceId = null) {
     .map((entry) => entry.shop);
 }
 
+// Default browse order for the map list: partnered (bookable) shops before
+// directory/info-only listings, and within each group the nearest first. Shops
+// with no computed distance (missing lat/lng) sort last. Pure — returns a new
+// array, leaving the input untouched. `distanceKm` is added per-shop by
+// AppContext.liveCatalog (haversine from the user's live location).
+export function sortByPartnerThenDistance(shops) {
+  return [...shops].sort((a, b) => {
+    const ap = a.listingType === "directory" ? 1 : 0;
+    const bp = b.listingType === "directory" ? 1 : 0;
+    if (ap !== bp) return ap - bp;
+    return (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity);
+  });
+}
+
 // The single best-matching shop id for a query (used to re-center/highlight the
 // map without hiding the other pins). Null when the query is empty or unmatched.
 export function getBestShopMatch(shops, search, serviceId = null) {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { userLocation } from "../data/catalog.js";
 import { useGeolocation } from "../lib/useGeolocation.js";
-import { getBestShopMatch, rankShops } from "../lib/booking.js";
+import { getBestShopMatch, rankShops, sortByPartnerThenDistance } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -176,11 +176,12 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
       : allShops;
     return state.activeFav ? byService.filter((s) => (state.favorites ?? []).includes(s.id)) : byService;
   }, [state.activeService, state.activeFav, state.favorites, allShops]);
-  // LIST set: the elastic/typo-tolerant ranked results for the sidebar.
-  const listShops = useMemo(() => {
-    const list = rankShops(mapShops, state.search, null);
-    return state.search ? list : mapShops;
-  }, [mapShops, state.search]);
+  // LIST set: when searching, the elastic/typo-tolerant ranked results for the
+  // sidebar; otherwise the default browse order — partners first, then nearest.
+  const listShops = useMemo(
+    () => (state.search ? rankShops(mapShops, state.search, null) : sortByPartnerThenDistance(mapShops)),
+    [mapShops, state.search]
+  );
   // Re-center the map on the single best text match (without selecting it).
   const bestMatchId = useMemo(
     () => (state.search ? getBestShopMatch(mapShops, state.search, null) : null),
@@ -222,6 +223,7 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
           focusShopId={bestMatchId}
           onSelectShop={onSelectMapShop}
           userLocation={liveLocation}
+          recenterLabel={t("recenter")}
         />
 
         {selectedShop ? (
@@ -258,11 +260,12 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
       : allShops;
     return state.activeFav ? byService.filter((s) => (state.favorites ?? []).includes(s.id)) : byService;
   }, [state.activeService, state.activeFav, state.favorites, allShops]);
-  // LIST set: the elastic/typo-tolerant ranked results for the drawer list.
-  const listShops = useMemo(() => {
-    const list = rankShops(mapShops, state.search, null);
-    return state.search ? list : mapShops;
-  }, [mapShops, state.search]);
+  // LIST set: when searching, the elastic/typo-tolerant ranked results for the
+  // drawer list; otherwise the default browse order — partners first, then nearest.
+  const listShops = useMemo(
+    () => (state.search ? rankShops(mapShops, state.search, null) : sortByPartnerThenDistance(mapShops)),
+    [mapShops, state.search]
+  );
   // Re-center the map on the single best text match (without selecting it).
   const bestMatchId = useMemo(
     () => (state.search ? getBestShopMatch(mapShops, state.search, null) : null),
@@ -280,6 +283,7 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
         focusShopId={bestMatchId}
         onSelectShop={onSelectMapShop}
         userLocation={liveLocation}
+        recenterLabel={t("recenter")}
       />
 
       <IconButton

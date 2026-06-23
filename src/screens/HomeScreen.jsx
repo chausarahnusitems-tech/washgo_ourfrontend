@@ -39,8 +39,12 @@ export function HomeScreen() {
     onShop: (id) => router.push(`/explore?shop=${id}`),
     onExplore: () => router.push("/explore"),
     onService: (serviceId) => {
-      const seed = serviceCatalog.some((service) => service.id === serviceId) ? serviceId : "";
-      router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
+      // Tiles backed by a real catalog service (Car Wash / Interior / Detailing)
+      // deep-link to the map's service FILTER (?service=). Tiles with no backing
+      // service — EV Charging (no shops offer it yet) and More — just open the
+      // full map. NB: the map filters on `service`, not the text query `q`.
+      const isService = serviceCatalog.some((service) => service.id === serviceId);
+      router.push(isService ? `/explore?service=${encodeURIComponent(serviceId)}` : "/explore");
     },
     // Book a wash = browse and choose a shop. Rebook = repeat the most recent
     // booking's shop (fall back to browse when there's no history).
@@ -134,10 +138,10 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
             key={service.id}
             type="button"
             onClick={() => onService(service.id)}
-            className="grid min-h-[82px] min-w-0 place-items-center content-start gap-1 rounded-xl bg-transparent px-0 py-0"
+            className="grid min-h-[82px] min-w-0 place-items-center content-start gap-0.5 rounded-xl border border-wash-200 bg-white px-1 py-1.5 shadow-sm transition active:border-wash-400"
           >
-            <img src={service.icon} alt="" aria-hidden="true" className="h-[60px] w-[60px] max-w-full object-contain" />
-            <span className="text-center text-[0.6rem] leading-tight text-ink">{t(service.id)}</span>
+            <img src={service.icon} alt="" aria-hidden="true" className="h-[52px] w-[52px] max-w-full object-contain" />
+            <span className="text-center text-[0.6rem] font-bold leading-tight text-wash-600">{t(service.id)}</span>
           </button>
         ))}
       </div>
@@ -330,10 +334,10 @@ function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, o
                   key={service.id}
                   type="button"
                   onClick={() => onService(service.id)}
-                  className="flex flex-col items-center gap-2 rounded-2xl bg-wash-50 px-2 py-5 transition hover:bg-wash-100"
+                  className="flex flex-col items-center gap-2 rounded-2xl border border-wash-200 bg-white px-2 py-5 shadow-sm transition hover:border-wash-400 hover:shadow-md"
                 >
                   <img src={service.icon} alt="" aria-hidden="true" className="h-14 w-14 object-contain" />
-                  <span className="text-center text-xs font-semibold text-ink">{t(service.id)}</span>
+                  <span className="text-center text-xs font-bold text-wash-600">{t(service.id)}</span>
                 </button>
               ))}
             </div>

@@ -130,6 +130,51 @@ function createUserElement() {
   return el;
 }
 
+// Inline lucide "locate-fixed" glyph for the recenter button (crosshair + dot).
+const LOCATE_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#33414a" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/>' +
+  '<line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/>' +
+  '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></svg>';
+
+// A maplibre IControl that snaps the map back onto the user. `getTarget` is read
+// at click time (not when the control is built) so it always recenters on the
+// latest live location, even after the puck has moved. Lives in maplibre's own
+// control group so it inherits the native button styling.
+function createRecenterControl(getTarget, label) {
+  return {
+    onAdd(map) {
+      const container = document.createElement("div");
+      container.className = "maplibregl-ctrl maplibregl-ctrl-group";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.style.display = "flex";
+      button.style.alignItems = "center";
+      button.style.justifyContent = "center";
+      button.innerHTML = LOCATE_ICON;
+      button.addEventListener("click", () => {
+        const target = getTarget();
+        if (!target || target.lat == null || target.lng == null) return;
+        map.easeTo({
+          center: [target.lng, target.lat],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 600
+        });
+      });
+      container.appendChild(button);
+      this._container = container;
+      return container;
+    },
+    onRemove() {
+      this._container?.remove();
+      this._container = null;
+    }
+  };
+}
+
 /**
  * Interactive, pannable/zoomable MapLibre map with a marker per car wash and a
  * "you are here" puck. Clicking a marker calls `onSelectShop(shop.id)`.
@@ -147,7 +192,9 @@ export function InteractiveMap({
   userLocation,
   className,
   rounded = "rounded-none",
-  interactive = true
+  interactive = true,
+  // Accessible label/tooltip for the recenter ("locate me") control.
+  recenterLabel = "Recenter"
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -173,6 +220,10 @@ export function InteractiveMap({
   const userMarkerRef = useRef(null);
   const initialUserLocRef = useRef(userLocation);
   const recenteredRef = useRef(false);
+  // Latest user location, read by the recenter control's click handler so it
+  // targets the live puck position rather than the value captured at init.
+  const userLocationRef = useRef(userLocation);
+  userLocationRef.current = userLocation;
 
   // Init the map once.
   useEffect(() => {
@@ -192,6 +243,13 @@ export function InteractiveMap({
       map.addControl(
         new maplibregl.NavigationControl({ showCompass: false, showZoom: true }),
         "bottom-right"
+      );
+      // "Locate me": top-right keeps it clear of the desktop detail card
+      // (top-left) and the mobile bottom sheet. Reads the latest user location
+      // via ref on click.
+      map.addControl(
+        createRecenterControl(() => userLocationRef.current, recenterLabel),
+        "top-right"
       );
     }
 
