@@ -16,6 +16,7 @@ import {
   getSelectedServices,
   getSubtotal,
   getTotal,
+  isBookingElapsed,
   isWeeklyClosed
 } from "../lib/booking.js";
 import { addMonths, buildMonthGrid, formatMonthLabel, resolveBookingIso, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
@@ -97,7 +98,6 @@ export function BookingDetailScreen({ bookingId }) {
   // A pricier edit must be covered by the wallet (only the extra is charged).
   const extraCharge = Math.max(0, draftTotal - booking.total);
   const affordable = extraCharge <= state.funds;
-  const canSave = draftTotal > 0 && affordable;
   const dateLabel = editing ? getSelectedDateLabel(draft.dateId, t) : booking.date;
 
   // Edit calendar + slots (mirrors the booking flow): pick any future date, and a
@@ -108,7 +108,13 @@ export function BookingDetailScreen({ bookingId }) {
     viewMonth.getFullYear() === now.getFullYear() && viewMonth.getMonth() === now.getMonth();
   const grid = buildMonthGrid(viewMonth.getFullYear(), viewMonth.getMonth());
   const editHours = getDayHours(shop, draft.dateId);
-  const editSlots = editHours ? generateSlots(editHours.open, editHours.close, shop?.slotMinutes) ?? times : [];
+  // Drop slots whose start time has already passed on the picked day, so a
+  // reschedule can't land on a time in the past (mirrors the booking flow).
+  const editSlots = (editHours ? generateSlots(editHours.open, editHours.close, shop?.slotMinutes) ?? times : [])
+    .filter((time) => !isBookingElapsed({ dateId: draft.dateId, time }));
+  // Block saving onto a slot that isn't offered / has passed — e.g. a stale
+  // draft.time left over after switching the picked date to today.
+  const canSave = draftTotal > 0 && affordable && editSlots.includes(draft.time);
 
   const startEdit = () => {
     setDraft({ dateId: booking.dateId ?? "today", time: booking.time, services: [...booking.services] });
@@ -231,7 +237,9 @@ export function BookingDetailScreen({ bookingId }) {
                 })}
               </div>
               {editSlots.length === 0 ? (
-                <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-500">{t("closedOnDate")}</p>
+                <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-500">
+                  {editHours ? t("noSlotsToday") : t("closedOnDate")}
+                </p>
               ) : (
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {editSlots.map((time) => (
