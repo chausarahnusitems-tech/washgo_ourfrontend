@@ -16,7 +16,7 @@ export function OwnerReviewsScreen() {
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8 lg:px-10">
       <header>
-        <h1 className="font-display text-2xl font-black">{t("reviewsTitle")}</h1>
+        <h1 className="font-display text-2xl font-black">{t("ownerReviewsTitle")}</h1>
         <p className="mt-1 text-sm text-neutral-500">
           Reviews customers left after chatting with your shops.
         </p>

@@ -2,6 +2,7 @@
 
 import { userLocation } from "../../data/catalog.js";
 import { useApp } from "../../lib/AppContext.jsx";
+import { useGeolocation } from "../../lib/useGeolocation.js";
 import { InteractiveMap } from "./InteractiveMapDynamic.jsx";
 
 // MiniMapCard / MapPreview render a static (non-interactive) snapshot of the
@@ -10,11 +11,12 @@ import { InteractiveMap } from "./InteractiveMapDynamic.jsx";
 
 export function MiniMapCard({ className }) {
   const { catalog } = useApp();
+  const liveLocation = useGeolocation(userLocation);
   return (
     <InteractiveMap
       interactive={false}
       shops={catalog.shops ?? []}
-      userLocation={userLocation}
+      userLocation={liveLocation}
       className={className ?? "aspect-[345/201] w-full"}
       rounded="rounded-[18px]"
     />
@@ -23,11 +25,12 @@ export function MiniMapCard({ className }) {
 
 export function MapPreview({ large = false, className }) {
   const { catalog } = useApp();
+  const liveLocation = useGeolocation(userLocation);
   return (
     <InteractiveMap
       interactive={false}
       shops={catalog.shops ?? []}
-      userLocation={userLocation}
+      userLocation={liveLocation}
       className={className ?? (large ? "h-[356px] w-full" : "aspect-[345/201] w-full")}
       rounded={large ? "rounded-none" : "rounded-[18px]"}
     />

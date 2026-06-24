@@ -7,15 +7,16 @@ import { cx } from "../../lib/cx.js";
 import { Button } from "../ui/Button.jsx";
 
 // Post-close prompt: rate the support/resolution experience (1..5 + optional
-// comment). Shown to the non-admin requester after a thread is closed.
-export function ConversationReviewPrompt({ onSubmit, busy = false }) {
+// comment). Shown to the non-admin requester after a thread is closed. For a
+// shop (customer<->owner) thread, it reframes as "Rate the car wash".
+export function ConversationReviewPrompt({ onSubmit, busy = false, isShop = false }) {
   const { t } = useApp();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
 
   return (
     <div className="border-t border-black/10 bg-white p-4">
-      <p className="text-sm font-bold text-ink">{t("rateExperience")}</p>
+      <p className="text-sm font-bold text-ink">{t(isShop ? "rateShop" : "rateExperience")}</p>
       <div className="mt-2 flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
           <button

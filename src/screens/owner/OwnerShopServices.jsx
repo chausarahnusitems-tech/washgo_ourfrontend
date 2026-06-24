@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Check, Tag, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ImagePlus, Tag, Trash2 } from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { createClient } from "../../lib/supabase/client.js";
 import {
   addCustomService,
   fetchCustomServices,
-  removeCustomService
+  removeCustomService,
+  updateCustomService,
+  uploadServiceImage
 } from "../../lib/data/api.js";
 import { cx } from "../../lib/cx.js";
 import { Button } from "../../components/ui/Button.jsx";
@@ -16,7 +18,7 @@ import { SERVICE_OPTION_GROUPS, CUSTOM_SERVICE, SERVICE_PRICE_BY_NAME } from "..
 
 // Two parts: pick from the shared catalogue (persisted to shop_services), and
 // add fully custom services (name + price, optionally flagged as an "offer").
-export function OwnerShopServices({ shop, saveServices }) {
+export function OwnerShopServices({ shop, saveServices, reload }) {
   const { catalog, t } = useApp();
   const services = catalog.services ?? [];
   const supabase = useMemo(() => createClient(), []);
@@ -88,6 +90,9 @@ export function OwnerShopServices({ shop, saveServices }) {
       setPrice("");
       setIsOffer(false);
       setPicked("");
+      // Refresh the owner shop list so customServiceCount (and the publish gate)
+      // reflect the new service without a full reload (#14).
+      reload?.();
     } catch (err) {
       console.error("[washgo] add custom service failed", err);
       window.alert(err?.message || "Could not add the service.");
@@ -100,6 +105,7 @@ export function OwnerShopServices({ shop, saveServices }) {
     try {
       await removeCustomService(supabase, id);
       setCustom((prev) => prev.filter((c) => c.id !== id));
+      reload?.();
     } catch (err) {
       console.error("[washgo] remove custom service failed", err);
     }
@@ -174,30 +180,14 @@ export function OwnerShopServices({ shop, saveServices }) {
         {custom.length > 0 && (
           <ul className="mb-4 grid gap-2">
             {custom.map((c) => (
-              <li
+              <CustomServiceRow
                 key={c.id}
-                className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 text-sm font-bold text-ink">
-                    {c.name}
-                    {c.is_offer && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-lime-100 px-2 py-0.5 text-[0.62rem] font-black text-lime-700">
-                        <Tag className="h-3 w-3" aria-hidden="true" /> Offer
-                      </span>
-                    )}
-                  </span>
-                  <span className="block text-xs text-neutral-500">{formatVnd(c.price)}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => deleteService(c.id)}
-                  aria-label="Remove"
-                  className="grid h-9 w-9 place-items-center rounded-full text-red-600 transition hover:bg-red-50"
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </li>
+                service={c}
+                supabase={supabase}
+                shopId={shop.id}
+                onUpdated={(row) => setCustom((prev) => prev.map((x) => (x.id === row.id ? row : x)))}
+                onDelete={() => deleteService(c.id)}
+              />
             ))}
           </ul>
         )}
@@ -259,5 +249,71 @@ export function OwnerShopServices({ shop, saveServices }) {
         </div>
       </section>
     </div>
+  );
+}
+
+// One custom service row with an optional photo (item 18). The image lands in the
+// shop-photos bucket under <shopId>/services/<serviceId> and its URL is saved on
+// the shop_custom_services row.
+function CustomServiceRow({ service, supabase, shopId, onUpdated, onDelete }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const url = await uploadServiceImage(supabase, shopId, service.id, file);
+      const row = await updateCustomService(supabase, service.id, { imageUrl: url });
+      onUpdated(row);
+    } catch (err) {
+      console.error("[washgo] service image upload failed", err);
+      window.alert(err?.message || "Could not upload the image.");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3">
+      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-neutral-100">
+        {service.image_url ? (
+          <img src={service.image_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <ImagePlus className="h-5 w-5 text-neutral-300" aria-hidden="true" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2 text-sm font-bold text-ink">
+          {service.name}
+          {service.is_offer && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-lime-100 px-2 py-0.5 text-[0.62rem] font-black text-lime-700">
+              <Tag className="h-3 w-3" aria-hidden="true" /> Offer
+            </span>
+          )}
+        </span>
+        <span className="block text-xs text-neutral-500">{formatVnd(service.price)}</span>
+      </span>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden" />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        aria-label={service.image_url ? "Replace photo" : "Add photo"}
+        className="grid h-9 w-9 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-40"
+      >
+        <ImagePlus className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label="Remove"
+        className="grid h-9 w-9 place-items-center rounded-full text-red-600 transition hover:bg-red-50"
+      >
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </li>
   );
 }

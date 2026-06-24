@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
@@ -24,20 +25,26 @@ const homeServiceTiles = [
 
 export function HomeScreen() {
   const isDesktop = useIsDesktop();
-  const { t, state, setLang } = useApp();
+  const { t, state, setLang, auth } = useApp();
   const { router, searchParams, setParams } = useUrlNav();
 
   const props = {
     state: { ...state, search: searchParams.get("q") ?? "" },
     t,
+    isMember: state.selectedPlan === "premium",
+    membershipUntil: auth?.profile?.membership_until ?? null,
     onLang: setLang,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
     onShop: (id) => router.push(`/explore?shop=${id}`),
     onExplore: () => router.push("/explore"),
     onService: (serviceId) => {
-      const seed = serviceCatalog.some((service) => service.id === serviceId) ? serviceId : "";
-      router.push(seed ? `/explore?q=${encodeURIComponent(seed)}` : "/explore");
+      // Tiles backed by a real catalog service (Car Wash / Interior / Detailing)
+      // deep-link to the map's service FILTER (?service=). Tiles with no backing
+      // service — EV Charging (no shops offer it yet) and More — just open the
+      // full map. NB: the map filters on `service`, not the text query `q`.
+      const isService = serviceCatalog.some((service) => service.id === serviceId);
+      router.push(isService ? `/explore?service=${encodeURIComponent(serviceId)}` : "/explore");
     },
     // Book a wash = browse and choose a shop. Rebook = repeat the most recent
     // booking's shop (fall back to browse when there's no history).
@@ -45,6 +52,7 @@ export function HomeScreen() {
     // Rebook a specific past booking's shop (Previous Booking card).
     onRebookShop: (shopId) => router.push(shopId ? `/shops/${shopId}/book` : "/explore"),
     onBookings: () => router.push("/bookings"),
+    onPlans: () => router.push("/plans"),
     onTopUp: () => router.push("/topup")
   };
 
@@ -67,16 +75,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
       <PremiumCareCard t={t} aspectClass="aspect-[345/226]" imageWidthClass="w-[85.5%]" />
 
       <div className="mt-5 flex items-center gap-2">
-        <label className="grid min-h-12 flex-1 grid-cols-[auto_1fr] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
-          <Icon name="Search" className="h-5 w-5" />
-          <input
-            type="search"
-            value={state.search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder={t("searchPlaceholder")}
-            className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
-          />
-        </label>
+        <HomeSearchInput value={state.search} onSearch={onSearch} t={t} />
         <button
           type="button"
           onClick={onExplore}
@@ -139,10 +138,10 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
             key={service.id}
             type="button"
             onClick={() => onService(service.id)}
-            className="grid min-h-[82px] min-w-0 place-items-center content-start gap-1 rounded-xl bg-transparent px-0 py-0"
+            className="grid min-h-[82px] min-w-0 place-items-center content-start gap-0.5 rounded-xl border border-wash-200 bg-white px-1 py-1.5 shadow-sm transition active:border-wash-400"
           >
-            <img src={service.icon} alt="" aria-hidden="true" className="h-[60px] w-[60px] max-w-full object-contain" />
-            <span className="text-center text-[0.6rem] leading-tight text-ink">{t(service.id)}</span>
+            <img src={service.icon} alt="" aria-hidden="true" className="h-[52px] w-[52px] max-w-full object-contain" />
+            <span className="text-center text-[0.6rem] font-bold leading-tight text-wash-600">{t(service.id)}</span>
           </button>
         ))}
       </div>
@@ -167,7 +166,7 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebookShop, onBookings }) {
+function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, onService, onBook, onRebookShop, onBookings, onPlans }) {
   const nearbyShops = getVisibleShops("");
   // Surface the user's actual next upcoming booking (seeded list), not a fake.
   const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
@@ -291,13 +290,25 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebookS
             <PremiumCareCard t={t} aspectClass="aspect-[2/1]" imageWidthClass="w-[80%]" />
 
             <section className="relative aspect-[2/1] overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_85%_20%,rgba(255,255,255,0.28),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-6 text-white">
-              <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
-              <p className="mt-3 text-sm text-white/90">
-                {t("renewOn")}
-                <br />
-                <strong>{t("dateUntil")}</strong>
-              </p>
-              <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+              {isMember ? (
+                <>
+                  <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
+                  <p className="mt-3 text-sm text-white/90">
+                    {t("memberActiveUntil")}
+                    <br />
+                    <strong>{membershipUntil || t("active")}</strong>
+                  </p>
+                  <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
+                  <p className="mt-3 text-sm text-white/90">{t("membershipPitch")}</p>
+                  <button type="button" onClick={onPlans} className="mt-4 inline-flex rounded-full bg-white/90 px-4 py-1.5 text-sm font-black text-wash-600">
+                    {t("joinMembership")}
+                  </button>
+                </>
+              )}
             </section>
           </div>
 
@@ -323,10 +334,10 @@ function HomeDesktop({ state, t, onShop, onExplore, onService, onBook, onRebookS
                   key={service.id}
                   type="button"
                   onClick={() => onService(service.id)}
-                  className="flex flex-col items-center gap-2 rounded-2xl bg-wash-50 px-2 py-5 transition hover:bg-wash-100"
+                  className="flex flex-col items-center gap-2 rounded-2xl border border-wash-200 bg-white px-2 py-5 shadow-sm transition hover:border-wash-400 hover:shadow-md"
                 >
                   <img src={service.icon} alt="" aria-hidden="true" className="h-14 w-14 object-contain" />
-                  <span className="text-center text-xs font-semibold text-ink">{t(service.id)}</span>
+                  <span className="text-center text-xs font-bold text-wash-600">{t(service.id)}</span>
                 </button>
               ))}
             </div>
@@ -366,6 +377,44 @@ function PremiumCareCard({ t, aspectClass, imageWidthClass }) {
         <p className="mt-[2.5cqw] text-[3cqw] leading-snug text-white/90">{t("heroCopy")}</p>
       </div>
     </section>
+  );
+}
+
+// Home search box with LOCAL input state + a debounced URL write, so typing stays
+// responsive instead of replacing the route (and re-ranking) on every keystroke.
+// The URL `value` stays the source of truth: we re-sync the input when it changes
+// externally (back button / cleared) and commit immediately on Enter.
+function HomeSearchInput({ value, onSearch, t }) {
+  const [draft, setDraft] = useState(value);
+  const timerRef = useRef(null);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const onDraftChange = (next) => {
+    setDraft(next);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => onSearch(next), 250);
+  };
+
+  return (
+    <label className="grid min-h-12 flex-1 grid-cols-[auto_1fr] items-center gap-3 rounded-full bg-neutral-100 px-4 text-neutral-500">
+      <Icon name="Search" className="h-5 w-5" />
+      <input
+        type="search"
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            clearTimeout(timerRef.current);
+            onSearch(event.currentTarget.value);
+          }
+        }}
+        placeholder={t("searchPlaceholder")}
+        className="min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-neutral-400"
+      />
+    </label>
   );
 }
 

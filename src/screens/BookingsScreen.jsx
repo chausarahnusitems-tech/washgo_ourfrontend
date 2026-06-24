@@ -14,7 +14,7 @@ import { BookingCard } from "./shared/BookingCard.jsx";
 
 export function BookingsScreen() {
   const router = useRouter();
-  const { t, state } = useApp();
+  const { t, state, redeemVoucher } = useApp();
 
   const upcoming = getUpcomingBookings(state.bookings);
   const history = getHistoryBookings(state.bookings);
@@ -28,11 +28,17 @@ export function BookingsScreen() {
         : t("bookingsSummaryMany").replace("{n}", upcoming.length);
 
   const onOpen = (id) => router.push(`/bookings/${id}`);
+  const onUseVoucher = () => {
+    redeemVoucher();
+    router.push("/explore");
+  };
 
   return (
     <section className="h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
-      <div className="mx-auto grid w-full max-w-2xl content-start gap-6">
+      <div className="mx-auto grid w-full max-w-5xl content-start gap-6">
         <TopBar compact hideLogo title={t("bookings")} subtitle={hasAny ? summary : undefined} />
+
+        <LoyaltyStrip stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
 
         {hasAny ? (
           <>
@@ -55,12 +61,52 @@ export function BookingsScreen() {
   );
 }
 
+function LoyaltyStrip({ stamps, voucher, t, onUse }) {
+  const totalStamps = 5;
+  const filled = Math.max(0, Math.min(totalStamps, stamps ?? 0));
+  const remaining = totalStamps - filled;
+
+  const status = voucher
+    ? t("freeWashUnlocked")
+    : filled === totalStamps - 1
+      ? t("oneMoreWash")
+      : `${remaining} ${t("washesToGo")}`;
+
+  return (
+    <section className="rounded-2xl border border-wash-100 bg-wash-50 p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="font-display text-base font-black text-wash-700">{t("loyaltyTitle")}</h2>
+          <p className="mt-0.5 text-sm font-semibold text-wash-600">{status}</p>
+        </div>
+        {voucher ? (
+          <Button onClick={onUse} className="min-h-9 shrink-0 px-4">
+            {t("useVoucher")}
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-4 flex items-center gap-1.5">
+        {Array.from({ length: totalStamps }, (_, index) => (
+          <span
+            key={index}
+            className={`h-2 flex-1 rounded-full ${index < filled ? "bg-wash-500" : "bg-wash-100"}`}
+            aria-hidden="true"
+          />
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-neutral-500">
+        <strong className="text-wash-600">{filled}</strong> / {totalStamps} {t("washesCompleted")}
+      </p>
+    </section>
+  );
+}
+
 function BookingSection({ title, bookings, empty, t, onOpen }) {
   return (
     <section>
       <h2 className="mb-3 font-display text-base font-black">{title}</h2>
       {bookings.length ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {bookings.map((booking) => (
             <BookingCard
               key={booking.id}

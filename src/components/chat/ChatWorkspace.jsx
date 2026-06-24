@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   Flag,
   Headset,
+  Info,
   MessageCircle,
   Mic,
   Paperclip,
@@ -21,9 +22,11 @@ import {
   deleteConversation,
   hideConversation,
   fetchConversation,
+  fetchConversationCustomer,
   fetchConversationReview,
   fetchConversations,
   fetchMessages,
+  markConversationRead,
   openConversation,
   reportConversation,
   sendMessage,
@@ -32,6 +35,7 @@ import {
   uploadChatAttachment
 } from "../../lib/data/api.js";
 import { cx } from "../../lib/cx.js";
+import { parseIsoDate } from "../../lib/calendar.js";
 import { tagLabel } from "./problemTags.js";
 import { SupportTagPicker } from "./SupportTagPicker.jsx";
 import { ConversationReviewPrompt } from "./ConversationReviewPrompt.jsx";
@@ -54,13 +58,42 @@ function roleLabel(role, t) {
 // party: the requester sees "Support" (admins), while an admin sees the
 // requester's name + role ("Jane · Owner") for triage. Shop threads show the
 // shop name.
-function convLabel(c, uid, t) {
+function convLabel(c, uid, t, locale = "en-US") {
   if (c.kind === "support") {
     if (c.createdBy && c.createdBy === uid) return t("supportThread");
     const name = c.creatorName || c.creatorEmail || "User";
     return `${name} · ${roleLabel(c.creatorRole, t)}`;
   }
-  return c.shopName || "Shop chat";
+  const base = c.shopName || "Shop chat";
+  // A per-booking thread is tagged with its session so multiple bookings at the
+  // same shop are distinguishable (and the owner can't see the customer's name).
+  if (c.bookingDate) {
+    // parseIsoDate (local noon) avoids the UTC-midnight off-by-one on date-only values.
+    const day = (parseIsoDate(c.bookingDate) ?? new Date(c.bookingDate)).toLocaleDateString(locale, {
+      month: "short",
+      day: "numeric"
+    });
+    return `${base} · ${day}${c.bookingSlot ? ` ${c.bookingSlot}` : ""}`;
+  }
+  return base;
+}
+
+// The DB stores attachment-only previews as bracketed sentinels; localize those,
+// otherwise show the (already truncated) message body.
+function formatPreview(raw, t) {
+  if (!raw) return "";
+  switch (raw) {
+    case "[photo]":
+      return t("previewPhoto");
+    case "[video]":
+      return t("previewVideo");
+    case "[voice message]":
+      return t("previewVoice");
+    case "[attachment]":
+      return t("previewAttachment");
+    default:
+      return raw;
+  }
 }
 
 function sameDay(a, b) {
@@ -105,6 +138,9 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(initialConversationId);
   const [messages, setMessages] = useState([]);
+  // Which conversation `messages` belongs to — guards effects against acting on
+  // the previous thread's messages during the async switch.
+  const [messagesConvId, setMessagesConvId] = useState(null);
   const [body, setBody] = useState("");
   const [pendingFile, setPendingFile] = useState(null);
   const [sending, setSending] = useState(false);
@@ -114,6 +150,11 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [showArchived, setShowArchived] = useState(false);
   const [existingReview, setExistingReview] = useState(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  // For a shop thread viewed by the shop OWNER (not the customer/creator): the
+  // customer's name/phone, resolved via a SECURITY DEFINER RPC since profiles
+  // RLS is self-only. Empty for the customer's own view or on error (the RPC
+  // throws for non-owners).
+  const [convCustomer, setConvCustomer] = useState(null);
   const [recording, setRecording] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
   const [showReport, setShowReport] = useState(false);
@@ -123,6 +164,10 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   // A deep-linked thread (e.g. from the reviews page) may not be in the current
   // filtered list — fetch it on its own so the header/actions still render.
   const [extraConv, setExtraConv] = useState(null);
+  // Issue-details side panel (support side only) and the frozen "unread" divider
+  // position for the open thread.
+  const [showDetails, setShowDetails] = useState(false);
+  const [unreadAnchor, setUnreadAnchor] = useState(null);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const inputRef = useRef(null);
@@ -136,6 +181,13 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const streamRef = useRef(null);
   const recTimerRef = useRef(null);
   const cancelRecRef = useRef(false);
+  // Last (conv, message) we marked read, and the last thread we captured an
+  // unread anchor for — both guard against redundant work on the 4s poll.
+  const readSyncRef = useRef({ convId: null, msgId: null });
+  const enteredRef = useRef(null);
+  // convId -> optimistic last_read_at we just wrote, so a stale poll snapshot
+  // can't downgrade lastReadAt and briefly re-flag a just-read thread.
+  const optimisticReadRef = useRef(new Map());
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? extraConv;
   const isClosed = activeConv?.status === "closed";
@@ -146,6 +198,10 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     !!activeConv && !isClosed && (isAdmin || activeConv.createdBy === uid || activeConv.kind === "shop");
   const canManage = !!activeConv && (isAdmin || activeConv.createdBy === uid);
   const isReviewTarget = isClosed && !isAdmin && activeConv?.createdBy === uid;
+  // The support side (an admin, or the shop owner on a shop chat) gets an issue
+  // details panel. The thread creator (customer) doesn't.
+  const canSeeDetails =
+    !!activeConv && (isAdmin || (activeConv.kind === "shop" && activeConv.createdBy && activeConv.createdBy !== uid));
   // Either party of a customer<->owner (shop) chat can report it to the admins.
   // Admins are the recipients, so they don't see a report button.
   const canReport = !!activeConv && activeConv.kind === "shop" && !isAdmin;
@@ -159,6 +215,16 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     [conversations]
   );
 
+  // Index of the first message from the other party newer than the frozen
+  // unread anchor — where the "Unread messages" divider goes (-1 = none). Only
+  // when the loaded messages belong to the active thread, and only when there's a
+  // real prior read position (a never-read thread isn't treated as all-unread).
+  const firstUnreadIdx = useMemo(() => {
+    if (!unreadAnchor || messagesConvId !== activeId || !messages.length) return -1;
+    const anchorMs = new Date(unreadAnchor).getTime();
+    return messages.findIndex((m) => m.sender_id !== uid && new Date(m.created_at).getTime() > anchorMs);
+  }, [messages, messagesConvId, activeId, unreadAnchor, uid]);
+
   useEffect(() => {
     if (initialConversationId) setActiveId(initialConversationId);
   }, [initialConversationId]);
@@ -170,8 +236,22 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     }
     try {
       const list = await fetchConversations(supabase, kindFilter);
-      setConversations(list);
-      setActiveId((prev) => prev ?? sortActive(list.filter((c) => !c.archived))[0]?.id ?? null);
+      // Don't let a poll snapshot taken before our mark-read committed downgrade
+      // lastReadAt and re-flag a just-read thread: keep the newer of the two.
+      const opt = optimisticReadRef.current;
+      const merged = list.map((c) => {
+        const o = opt.get(c.id);
+        if (o && (!c.lastReadAt || new Date(o) > new Date(c.lastReadAt))) {
+          return {
+            ...c,
+            lastReadAt: o,
+            unread: c.lastMessageAt ? new Date(c.lastMessageAt) > new Date(o) : false
+          };
+        }
+        return c;
+      });
+      setConversations(merged);
+      setActiveId((prev) => prev ?? sortActive(merged.filter((c) => !c.archived))[0]?.id ?? null);
     } catch (err) {
       console.error("[washgo] load conversations failed", err);
     } finally {
@@ -186,10 +266,13 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const loadMessages = useCallback(async () => {
     if (!supabase || !activeId) {
       setMessages([]);
+      setMessagesConvId(null);
       return;
     }
     try {
-      setMessages(await fetchMessages(supabase, activeId));
+      const list = await fetchMessages(supabase, activeId);
+      setMessages(list);
+      setMessagesConvId(activeId); // tag which thread these belong to
     } catch (err) {
       console.error("[washgo] load messages failed", err);
     }
@@ -228,6 +311,44 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // On entering a thread, freeze the "unread" divider at the thread's stored
+  // last-read mark. Only re-captures when the active thread actually changes (the
+  // 4s poll re-runs this but short-circuits), so the divider stays put while you
+  // read — and resets if you leave and come back.
+  useEffect(() => {
+    if (!activeId) {
+      enteredRef.current = null;
+      return;
+    }
+    if (enteredRef.current === activeId) return;
+    enteredRef.current = activeId;
+    const conv = conversations.find((c) => c.id === activeId) ?? extraConv;
+    setUnreadAnchor(conv?.lastReadAt ?? null);
+  }, [activeId, conversations, extraConv]);
+
+  // Mark the active thread read on open and whenever a new last message arrives
+  // (including the caller's own sends). Optimistically clears its unread flag so
+  // the list updates instantly, before the next poll confirms it.
+  useEffect(() => {
+    // Only mark read once the loaded messages actually belong to the active
+    // thread — otherwise a thread switch would mark the new thread read based on
+    // the previous thread's (stale) messages and fire a redundant RPC.
+    if (!supabase || !activeId || messagesConvId !== activeId || !messages.length) return;
+    const lastId = messages[messages.length - 1].id;
+    const sync = readSyncRef.current;
+    if (sync.convId === activeId && sync.msgId === lastId) return;
+    readSyncRef.current = { convId: activeId, msgId: lastId };
+    const stamp = new Date().toISOString();
+    optimisticReadRef.current.set(activeId, stamp);
+    markConversationRead(supabase, activeId)
+      .then(() => {
+        setConversations((cur) =>
+          cur.map((c) => (c.id === activeId ? { ...c, unread: false, lastReadAt: stamp } : c))
+        );
+      })
+      .catch((err) => console.error("[washgo] mark read failed", err));
+  }, [supabase, activeId, messagesConvId, messages]);
+
   useEffect(() => {
     let active = true;
     if (!supabase || !activeConv || activeConv.status !== "closed" || isAdmin || activeConv.createdBy !== uid) {
@@ -244,6 +365,32 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, activeConv?.id, activeConv?.status, isAdmin, uid, activeConv?.createdBy]);
+
+  // Resolve the customer's identity for a shop thread when the viewer is the
+  // shop OWNER (i.e. a shop thread they didn't create). The RPC throws for
+  // non-owners, so swallow errors and leave it empty — this never runs for the
+  // customer's own view (createdBy === uid).
+  useEffect(() => {
+    let active = true;
+    const isOwnerOfShopThread =
+      !!activeConv && activeConv.kind === "shop" && activeConv.createdBy && activeConv.createdBy !== uid;
+    if (!supabase || !isOwnerOfShopThread) {
+      setConvCustomer(null);
+      return undefined;
+    }
+    setConvCustomer(null);
+    fetchConversationCustomer(supabase, activeConv.id)
+      .then((c) => {
+        if (active) setConvCustomer(c);
+      })
+      .catch(() => {
+        if (active) setConvCustomer(null);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, activeConv?.id, activeConv?.kind, activeConv?.createdBy, uid]);
 
   // Tidy up any in-flight recording when the component unmounts.
   useEffect(() => {
@@ -548,31 +695,130 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const headerBtn =
     "shrink-0 inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1.5 text-xs font-bold text-neutral-600 hover:bg-neutral-50 disabled:opacity-50";
 
+  // Issue-details side panel content (support side). Shows what we actually have
+  // on the conversation — subject, status, who raised it, when, and the tags.
+  function renderDetails() {
+    const c = activeConv;
+    if (!c) return null;
+    const person = c.creatorName || c.creatorEmail || "—";
+    const created = c.createdAt
+      ? new Date(c.createdAt).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })
+      : "—";
+    const statusText = c.archived ? t("archived") : c.status === "closed" ? t("statusClosed") : t("statusOpen");
+    const subject = c.kind === "shop" ? c.shopName || t("supportThread") : t("supportThread");
+    const rows = [
+      [t("detailSubject"), subject],
+      [t("detailStatus"), statusText],
+      [t("detailPerson"), `${person}${c.creatorRole ? ` · ${roleLabel(c.creatorRole, t)}` : ""}`],
+      [t("detailCreated"), created]
+    ];
+    // Owner viewing a shop thread: surface the customer resolved via RPC.
+    if (convCustomer?.full_name) {
+      rows.push([
+        t("customer"),
+        `${convCustomer.full_name}${convCustomer.phone ? ` · ${convCustomer.phone}` : ""}`
+      ]);
+    }
+    return (
+      <div className="p-4">
+        <h4 className="font-display text-sm font-black uppercase tracking-wide text-neutral-500">
+          {t("issueDetails")}
+        </h4>
+        <dl className="mt-3 space-y-3">
+          {rows.map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-[0.7rem] font-bold uppercase tracking-wide text-neutral-400">{k}</dt>
+              <dd className="mt-0.5 text-sm text-ink">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        {c.problemTags?.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[0.7rem] font-bold uppercase tracking-wide text-neutral-400">{t("detailCategory")}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {c.problemTags.map((slug) => (
+                <span
+                  key={slug}
+                  className="rounded-full bg-neutral-100 px-2 py-0.5 text-[0.65rem] font-bold text-neutral-600"
+                >
+                  {tagLabel(slug, t)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderConvItem(c) {
+    const active = c.id === activeId;
+    const unread = c.unread && !active; // never flag the thread you're reading
+    const tags = c.problemTags || [];
+    const tagText = tags.slice(0, 2).map((s) => tagLabel(s, t)).join(", ");
+    const extraTags = tags.length - 2;
+    const statusText = c.archived
+      ? t("archived")
+      : c.status === "closed"
+        ? t("statusClosed")
+        : tagText
+          ? t("statusOpen")
+          : "";
+    const meta = [tagText && (extraTags > 0 ? `${tagText} +${extraTags}` : tagText), statusText]
+      .filter(Boolean)
+      .join(" · ");
+    const preview = formatPreview(c.lastMessagePreview, t);
+    const ts = c.lastMessageAt ? new Date(c.lastMessageAt) : null;
+    const timeLabel = ts
+      ? sameDay(ts, new Date())
+        ? ts.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
+        : ts.toLocaleDateString(locale, { month: "short", day: "numeric" })
+      : "";
     return (
       <li key={c.id}>
         <button
           type="button"
           onClick={() => setActiveId(c.id)}
           className={cx(
-            "flex w-full items-center gap-3 border-b border-black/5 px-4 py-3 text-left transition",
-            c.id === activeId ? "bg-wash-50" : "hover:bg-neutral-50"
+            "flex w-full items-start gap-3 border-b border-black/5 px-4 py-3 text-left transition",
+            active
+              ? "bg-wash-50"
+              : unread
+                ? "bg-wash-50/40 hover:bg-wash-50/70"
+                : "hover:bg-neutral-50"
           )}
         >
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-neutral-100 text-neutral-500">
             {c.kind === "support" ? <Headset className="h-4 w-4" /> : <Store className="h-4 w-4" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-ink">{convLabel(c, uid, t)}</span>
-            {c.archived ? (
-              <span className="text-[0.65rem] font-bold uppercase tracking-wide text-neutral-400">
-                {t("archived")}
+            <span className="flex items-center gap-2">
+              <span className={cx("min-w-0 flex-1 truncate text-sm text-ink", unread ? "font-black" : "font-bold")}>
+                {convLabel(c, uid, t, locale)}
+                {unread && <span className="sr-only">, {t("unreadConversation")}</span>}
               </span>
-            ) : c.status === "closed" ? (
-              <span className="text-[0.65rem] font-bold uppercase tracking-wide text-neutral-400">
-                {t("chatClosed")}
+              {timeLabel && (
+                <span
+                  className={cx(
+                    "shrink-0 text-[0.65rem]",
+                    unread ? "font-bold text-wash-600" : "text-neutral-500"
+                  )}
+                >
+                  {timeLabel}
+                </span>
+              )}
+            </span>
+            {meta && (
+              <span className="mt-0.5 block truncate text-[0.7rem] font-semibold text-neutral-500">{meta}</span>
+            )}
+            {(preview || unread) && (
+              <span className="mt-0.5 flex items-center gap-2">
+                <span className={cx("min-w-0 flex-1 truncate text-xs", unread ? "text-ink" : "text-neutral-500")}>
+                  {preview || " "}
+                </span>
+                {unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-wash-500" aria-hidden="true" />}
               </span>
-            ) : null}
+            )}
           </span>
         </button>
       </li>
@@ -623,18 +869,38 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       </aside>
 
       {/* Thread */}
-      <section className={cx("flex min-h-0 flex-col bg-mist", !activeId && "hidden sm:flex")}>
+      <section className={cx("flex min-h-0 bg-mist", !activeId && "hidden sm:flex")}>
         {activeId ? (
           <>
+            {/* Chat column: header + messages + composer */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="border-b border-black/10 bg-white">
               <div className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setActiveId(null)} className="sm:hidden" aria-label="Back">
                     <MessageCircle className="h-5 w-5 text-neutral-500" />
                   </button>
-                  <h3 className="min-w-0 flex-1 truncate font-display text-base font-black">
-                    {convLabel(activeConv ?? {}, uid, t)}
-                  </h3>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate font-display text-base font-black">
+                      {convLabel(activeConv ?? {}, uid, t, locale)}
+                    </h3>
+                    {convCustomer?.full_name && (
+                      <p className="truncate text-xs font-semibold text-neutral-500">
+                        {t("customer")}: {convCustomer.full_name}
+                      </p>
+                    )}
+                  </div>
+                  {canSeeDetails && (
+                    <button
+                      type="button"
+                      onClick={() => setShowDetails((v) => !v)}
+                      aria-pressed={showDetails}
+                      className={cx(headerBtn, "hidden lg:inline-flex", showDetails && "bg-neutral-100")}
+                    >
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                      {t("details")}
+                    </button>
+                  )}
                   {/* Report a customer<->owner chat to the admins (either party). */}
                   {canReport && (
                     <button type="button" onClick={() => setShowReport(true)} className={headerBtn}>
@@ -687,18 +953,6 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                     </>
                   )}
                 </div>
-                {activeConv?.problemTags?.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {activeConv.problemTags.map((slug) => (
-                      <span
-                        key={slug}
-                        className="rounded-full bg-neutral-100 px-2 py-0.5 text-[0.65rem] font-bold text-neutral-600"
-                      >
-                        {tagLabel(slug, t)}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -734,6 +988,22 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                               year: "numeric"
                             })}
                           </span>
+                        </div>
+                      )}
+                      {i === firstUnreadIdx && (
+                        <div
+                          role="separator"
+                          aria-label={t("unreadMessages")}
+                          className="my-3 flex items-center gap-2 px-1"
+                        >
+                          <span className="h-px flex-1 bg-wash-200" aria-hidden="true" />
+                          <span
+                            aria-hidden="true"
+                            className="rounded-full bg-wash-100 px-3 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-wash-700"
+                          >
+                            {t("unreadMessages")}
+                          </span>
+                          <span className="h-px flex-1 bg-wash-200" aria-hidden="true" />
                         </div>
                       )}
                       <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
@@ -803,10 +1073,14 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                 {isReviewTarget &&
                   (existingReview ? (
                     <p className="border-t border-black/10 bg-white px-4 py-3 text-center text-sm font-semibold text-wash-600">
-                      {t("reviewThanks")}
+                      {t(activeConv?.kind === "shop" ? "rateShopThanks" : "reviewThanks")}
                     </p>
                   ) : (
-                    <ConversationReviewPrompt onSubmit={onSubmitReview} busy={reviewBusy} />
+                    <ConversationReviewPrompt
+                      onSubmit={onSubmitReview}
+                      busy={reviewBusy}
+                      isShop={activeConv?.kind === "shop"}
+                    />
                   ))}
               </>
             ) : recording ? (
@@ -910,10 +1184,16 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                 </div>
               </form>
             )}
+            </div>
+            {canSeeDetails && showDetails && (
+              <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-black/10 bg-white lg:flex">
+                {renderDetails()}
+              </aside>
+            )}
           </>
         ) : (
-          <div className="grid h-full place-items-center p-8 text-center text-sm text-neutral-500">
-            Select a conversation to start chatting.
+          <div className="grid h-full w-full place-items-center p-8 text-center text-sm text-neutral-500">
+            {t("emptyThread")}
           </div>
         )}
       </section>

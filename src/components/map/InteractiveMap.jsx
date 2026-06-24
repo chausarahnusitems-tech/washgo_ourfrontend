@@ -130,6 +130,62 @@ function createUserElement() {
   return el;
 }
 
+// Inline lucide "locate-fixed" glyph for the recenter button (crosshair + dot).
+const LOCATE_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#33414a" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/>' +
+  '<line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/>' +
+  '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></svg>';
+
+// A maplibre IControl that snaps the map back onto the user. `getTarget` is read
+// at click time (not when the control is built) so it always recenters on the
+// latest live location, even after the puck has moved. Lives in maplibre's own
+// control group so it inherits the native button styling. `setLabel` lets the
+// owning component keep the tooltip/aria-label in sync with the active language
+// without rebuilding the control (the control itself is created only once).
+function createRecenterControl(getTarget, label) {
+  return {
+    _button: null,
+    _container: null,
+    setLabel(next) {
+      if (!this._button || !next) return;
+      this._button.title = next;
+      this._button.setAttribute("aria-label", next);
+    },
+    onAdd(map) {
+      const container = document.createElement("div");
+      container.className = "maplibregl-ctrl maplibregl-ctrl-group";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.style.display = "flex";
+      button.style.alignItems = "center";
+      button.style.justifyContent = "center";
+      button.innerHTML = LOCATE_ICON;
+      button.addEventListener("click", () => {
+        const target = getTarget();
+        if (!target || target.lat == null || target.lng == null) return;
+        map.easeTo({
+          center: [target.lng, target.lat],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 600
+        });
+      });
+      container.appendChild(button);
+      this._button = button;
+      this._container = container;
+      return container;
+    },
+    onRemove() {
+      this._container?.remove();
+      this._container = null;
+      this._button = null;
+    }
+  };
+}
+
 /**
  * Interactive, pannable/zoomable MapLibre map with a marker per car wash and a
  * "you are here" puck. Clicking a marker calls `onSelectShop(shop.id)`.
@@ -137,12 +193,22 @@ function createUserElement() {
 export function InteractiveMap({
   shops = [],
   selectedId = null,
+  // Optional: a shop id to re-center / enlarge purely from a text search, WITHOUT
+  // making it the "selected" pin (no detail card opens). Ignored when it equals
+  // the active `selectedId` so the explicit selection's flyTo wins. Backward
+  // compatible — callers that omit it behave exactly as before.
+  focusShopId = null,
   onSelectShop,
   onPick,
   userLocation,
   className,
   rounded = "rounded-none",
-  interactive = true
+  interactive = true,
+  // Opt-in "locate me" control. Off by default so picker/admin maps (which use
+  // the map to drop or inspect a pin, not to find the user) don't get it — only
+  // the Explore map enables it. `recenterLabel` is its localized tooltip/aria-label.
+  showRecenter = false,
+  recenterLabel = "Recenter"
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -155,10 +221,26 @@ export function InteractiveMap({
   pickRef.current = onPick;
   // Mirror the latest props in refs so the marker-build / flyTo effects can read
   // them without listing `shops` as a dependency (it's a fresh array each render).
-  const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
   const shopsRef = useRef(shops);
   shopsRef.current = shops;
+  // The pin to highlight = the explicit selection, or (when nothing is selected)
+  // the best text-search match. Mirrored in a ref for the marker-build effect.
+  const activeId = selectedId ?? focusShopId;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  // The "you are here" puck marker, kept in a ref so it can follow live
+  // geolocation updates after init. We recenter once when a real fix first
+  // differs from the initial location.
+  const userMarkerRef = useRef(null);
+  const initialUserLocRef = useRef(userLocation);
+  const recenteredRef = useRef(false);
+  // Latest user location, read by the recenter control's click handler so it
+  // targets the live puck position rather than the value captured at init.
+  const userLocationRef = useRef(userLocation);
+  userLocationRef.current = userLocation;
+  // The recenter control instance, so a label effect can update its tooltip on a
+  // runtime language change without rebuilding the map.
+  const recenterControlRef = useRef(null);
 
   // Init the map once.
   useEffect(() => {
@@ -181,8 +263,17 @@ export function InteractiveMap({
       );
     }
 
+    if (interactive && showRecenter) {
+      // "Locate me": top-right keeps it clear of the desktop detail card
+      // (top-left) and the mobile bottom sheet. Reads the latest user location
+      // via ref on click; kept in a ref so the label-sync effect can reach it.
+      const recenter = createRecenterControl(() => userLocationRef.current, recenterLabel);
+      recenterControlRef.current = recenter;
+      map.addControl(recenter, "top-right");
+    }
+
     if (userLocation) {
-      new maplibregl.Marker({ element: createUserElement(), anchor: "center", subpixelPositioning: true })
+      userMarkerRef.current = new maplibregl.Marker({ element: createUserElement(), anchor: "center", subpixelPositioning: true })
         .setLngLat([userLocation.lng, userLocation.lat])
         .addTo(map);
     }
@@ -232,9 +323,40 @@ export function InteractiveMap({
       map.remove();
       mapRef.current = null;
       markersRef.current = {};
+      userMarkerRef.current = null;
+      recenterControlRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the recenter control's tooltip/aria-label in sync with the active
+  // language (the control is built once, so the init effect can't see later
+  // `recenterLabel` changes — e.g. an EN<->VI toggle or the demo-mode lang
+  // hydrating from localStorage after first paint).
+  useEffect(() => {
+    recenterControlRef.current?.setLabel(recenterLabel);
+  }, [recenterLabel]);
+
+  // Follow live geolocation: move the puck and recenter once on the first real
+  // fix (so the map opens centred on the user without fighting later panning).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !userLocation) return;
+    const lngLat = [userLocation.lng, userLocation.lat];
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLngLat(lngLat);
+    } else {
+      userMarkerRef.current = new maplibregl.Marker({ element: createUserElement(), anchor: "center", subpixelPositioning: true })
+        .setLngLat(lngLat)
+        .addTo(map);
+    }
+    const init = initialUserLocRef.current;
+    const changed = !init || userLocation.lat !== init.lat || userLocation.lng !== init.lng;
+    if (changed && !recenteredRef.current) {
+      recenteredRef.current = true;
+      map.easeTo({ center: lngLat, duration: 600 });
+    }
+  }, [userLocation?.lat, userLocation?.lng]);
 
   // Diff shop markers when the visible set changes: reuse existing markers, add
   // only new shops, remove only departed ones. Avoids tearing down every pin on
@@ -257,7 +379,7 @@ export function InteractiveMap({
       const isDirectory = shop.listingType === "directory";
       // Directory listings have no Washgo price — show just the car glyph.
       const priceText = !isDirectory && shop.starting != null ? formatVnd(shop.starting) : "";
-      const el = createPinElement(priceText, shop.id === selectedIdRef.current, isDirectory);
+      const el = createPinElement(priceText, shop.id === activeIdRef.current, isDirectory);
       el.addEventListener("click", (event) => {
         event.stopPropagation();
         selectRef.current?.(shop.id);
@@ -281,23 +403,24 @@ export function InteractiveMap({
   // center) so the pointer tip stays anchored to the coordinate.
   useEffect(() => {
     Object.entries(markersRef.current).forEach(([id, marker]) => {
-      setPinActive(marker.getElement(), id === selectedId);
+      setPinActive(marker.getElement(), id === activeId);
     });
-  }, [selectedId]);
+  }, [activeId]);
 
-  // Pan/zoom to the selected shop (reads shops via ref so panning + typing don't
-  // re-center an already-selected pin).
+  // Pan/zoom to the active shop — the explicit selection, or the best text-search
+  // match when nothing is selected (reads shops via ref so panning + typing don't
+  // re-center an already-active pin).
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedId) return;
-    const shop = shopsRef.current.find((item) => item.id === selectedId);
+    if (!map || !activeId) return;
+    const shop = shopsRef.current.find((item) => item.id === activeId);
     if (shop?.lat != null) {
       map.flyTo({
         center: [shop.lng, shop.lat],
         zoom: Math.max(map.getZoom(), 15)
       });
     }
-  }, [selectedId]);
+  }, [activeId]);
 
   return (
     <div

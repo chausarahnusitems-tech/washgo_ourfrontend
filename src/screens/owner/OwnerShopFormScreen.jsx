@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff, MapPin, Send, Undo2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Eye, EyeOff, MapPin, Pencil, Send, Undo2 } from "lucide-react";
 import { userLocation } from "../../data/catalog.js";
 import { useOwnerShops } from "../../lib/owner/useOwnerShops.js";
 import { cx } from "../../lib/cx.js";
@@ -14,6 +14,7 @@ import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
 import { OwnerShopServices } from "./OwnerShopServices.jsx";
 import { OwnerShopPhotos } from "./OwnerShopPhotos.jsx";
 import { OwnerShopSchedule } from "./OwnerShopSchedule.jsx";
+import { OwnerShopPromoVideo } from "./OwnerShopPromoVideo.jsx";
 import { OwnerBookings } from "./OwnerBookings.jsx";
 
 const inputClass =
@@ -21,22 +22,29 @@ const inputClass =
 const labelClass = "text-xs font-black uppercase tracking-wide text-neutral-500";
 const TIME_OPTIONS = timeOptions(30);
 
-const TABS = ["details", "photos", "services", "schedule", "bookings"];
+// Bookings is the default/primary view when a shop is opened; editing details is
+// a secondary action (items 17/21/22).
+const TABS = ["bookings", "details", "photos", "services", "schedule", "promo"];
 const TAB_LABELS = {
-  details: "Details",
+  bookings: "Bookings",
+  details: "Edit details",
   photos: "Photos",
   services: "Services",
   schedule: "Schedule",
-  bookings: "Bookings"
+  promo: "Promo video"
 };
 
 export function OwnerShopFormScreen({ shopId }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const owner = useOwnerShops();
   const isEdit = Boolean(shopId);
   const shop = isEdit ? owner.shops.find((s) => s.id === shopId) : null;
 
-  const [tab, setTab] = useState("details");
+  // Opening a shop lands on its Bookings dashboard by default; ?tab=details (from
+  // the "Edit" affordances) jumps straight to the editor.
+  const requestedTab = searchParams.get("tab");
+  const [tab, setTab] = useState(TABS.includes(requestedTab) ? requestedTab : "bookings");
 
   if (isEdit && owner.loading && !shop) {
     return <CenterNote>Loading…</CenterNote>;
@@ -53,7 +61,7 @@ export function OwnerShopFormScreen({ shopId }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-8 lg:px-10">
+    <div className="mx-auto w-full max-w-5xl px-5 py-8 lg:px-10">
       <Link
         href="/owner/shops"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-500 transition hover:text-ink"
@@ -63,60 +71,78 @@ export function OwnerShopFormScreen({ shopId }) {
       </Link>
 
       <header className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-black">
-          {isEdit ? shop.name || "Untitled shop" : "New shop"}
-        </h1>
-        {isEdit && <ShopStatusBadge status={shop.status} />}
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-display text-2xl font-black">
+            {isEdit ? shop.name || "Untitled shop" : "New shop"}
+          </h1>
+          {isEdit && <ShopStatusBadge status={shop.status} />}
+        </div>
+        {isEdit && (
+          <Button variant="secondary" className="min-h-9 px-3 text-sm" onClick={() => setTab("details")}>
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            Edit shop
+          </Button>
+        )}
       </header>
 
-      {isEdit && (
+      {isEdit ? (
         <>
           <StatusActions shop={shop} submit={owner.submit} setPublished={owner.setPublished} />
-          <nav className="mt-5 flex gap-1 overflow-x-auto border-b border-black/10">
-            {TABS.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                aria-current={tab === key ? "page" : undefined}
-                className={cx(
-                  "shrink-0 border-b-2 px-4 py-2.5 text-sm font-bold transition",
-                  tab === key
-                    ? "border-wash-500 text-wash-600"
-                    : "border-transparent text-neutral-500 hover:text-ink"
-                )}
-              >
-                {TAB_LABELS[key]}
-              </button>
-            ))}
-          </nav>
-        </>
-      )}
+          <div className="mt-5 lg:grid lg:grid-cols-[200px_1fr] lg:gap-8">
+            {/* Per-shop sections as a left sidebar on desktop, scroll tabs on mobile */}
+            <nav className="-mx-5 flex gap-1 overflow-x-auto px-5 lg:mx-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:px-0">
+              {TABS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  aria-current={tab === key ? "page" : undefined}
+                  className={cx(
+                    "shrink-0 rounded-xl px-4 py-2.5 text-left text-sm font-bold transition",
+                    tab === key
+                      ? "bg-wash-50 text-wash-600"
+                      : "text-neutral-500 hover:bg-neutral-50 hover:text-ink"
+                  )}
+                >
+                  {TAB_LABELS[key]}
+                </button>
+              ))}
+            </nav>
 
-      <div className="mt-6">
-        {(!isEdit || tab === "details") && (
+            <div className="mt-6 lg:mt-0">
+              {tab === "bookings" && <OwnerBookings shopId={shop.id} />}
+              {tab === "details" && (
+                <ShopDetailsForm
+                  shop={shop}
+                  submitLabel="Save changes"
+                  onSave={async (payload) => {
+                    await owner.update(shop.id, payload);
+                  }}
+                />
+              )}
+              {tab === "photos" && (
+                <OwnerShopPhotos shop={shop} update={owner.update} reload={owner.reload} />
+              )}
+              {tab === "services" && (
+                <OwnerShopServices shop={shop} saveServices={owner.saveServices} reload={owner.reload} />
+              )}
+              {tab === "schedule" && <OwnerShopSchedule shop={shop} update={owner.update} />}
+              {tab === "promo" && <OwnerShopPromoVideo shop={shop} reload={owner.reload} />}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="mt-6">
           <ShopDetailsForm
-            shop={shop}
-            submitLabel={isEdit ? "Save changes" : "Create shop"}
+            shop={null}
+            submitLabel="Create shop"
             onSave={async (payload) => {
-              if (isEdit) {
-                await owner.update(shop.id, payload);
-              } else {
-                const created = await owner.create(payload);
-                router.push(`/owner/shops/${created.id}`);
-              }
+              const created = await owner.create(payload);
+              router.push(`/owner/shops/${created.id}`);
             }}
           />
-        )}
-        {isEdit && tab === "photos" && (
-          <OwnerShopPhotos shop={shop} uploadPhoto={owner.uploadPhoto} update={owner.update} />
-        )}
-        {isEdit && tab === "services" && (
-          <OwnerShopServices shop={shop} saveServices={owner.saveServices} />
-        )}
-        {isEdit && tab === "schedule" && <OwnerShopSchedule shop={shop} />}
-        {isEdit && tab === "bookings" && <OwnerBookings shopId={shop.id} />}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

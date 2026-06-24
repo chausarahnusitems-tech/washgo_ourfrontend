@@ -3,19 +3,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
-import { dates, times } from "../data/catalog.js";
+import { times } from "../data/catalog.js";
 import {
   formatVnd,
+  generateSlots,
   getBookingById,
   getBookingStatus,
   getCurrentShop,
+  getDayHours,
   getDiscount,
   getSelectedDateLabel,
   getSelectedServices,
   getSubtotal,
-  getTotal
+  getTotal,
+  isBookingElapsed,
+  isWeeklyClosed
 } from "../lib/booking.js";
-import { resolveBookingIso, toIsoDate } from "../lib/calendar.js";
+import { addMonths, buildMonthGrid, formatMonthLabel, resolveBookingIso, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -34,6 +38,11 @@ export function BookingDetailScreen({ bookingId }) {
 
   const [editing, setEditing] = useState(false);
   const [showLive, setShowLive] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [viewMonth, setViewMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [draft, setDraft] = useState(() => ({
     dateId: booking?.dateId ?? "today",
     time: booking?.time ?? times[0],
@@ -89,8 +98,23 @@ export function BookingDetailScreen({ bookingId }) {
   // A pricier edit must be covered by the wallet (only the extra is charged).
   const extraCharge = Math.max(0, draftTotal - booking.total);
   const affordable = extraCharge <= state.funds;
-  const canSave = draftTotal > 0 && affordable;
   const dateLabel = editing ? getSelectedDateLabel(draft.dateId, t) : booking.date;
+
+  // Edit calendar + slots (mirrors the booking flow): pick any future date, and a
+  // slot within that day's opening hours.
+  const now = new Date();
+  const todayIso = toIsoDate(now);
+  const atCurrentMonth =
+    viewMonth.getFullYear() === now.getFullYear() && viewMonth.getMonth() === now.getMonth();
+  const grid = buildMonthGrid(viewMonth.getFullYear(), viewMonth.getMonth());
+  const editHours = getDayHours(shop, draft.dateId);
+  // Drop slots whose start time has already passed on the picked day, so a
+  // reschedule can't land on a time in the past (mirrors the booking flow).
+  const editSlots = (editHours ? generateSlots(editHours.open, editHours.close, shop?.slotMinutes) ?? times : [])
+    .filter((time) => !isBookingElapsed({ dateId: draft.dateId, time }));
+  // Block saving onto a slot that isn't offered / has passed — e.g. a stale
+  // draft.time left over after switching the picked date to today.
+  const canSave = draftTotal > 0 && affordable && editSlots.includes(draft.time);
 
   const startEdit = () => {
     setDraft({ dateId: booking.dateId ?? "today", time: booking.time, services: [...booking.services] });
@@ -104,12 +128,14 @@ export function BookingDetailScreen({ bookingId }) {
     }));
 
   const saveEdit = async () => {
-    if (!canSave) return;
+    if (!canSave || saving) return; // guard against double-submit
     if (requireAuth) {
       router.push("/login");
       return;
     }
+    setSaving(true);
     const ok = await updateBooking(booking.id, { dateId: draft.dateId, time: draft.time, services: draft.services });
+    setSaving(false);
     if (ok) setEditing(false);
   };
 
@@ -139,7 +165,11 @@ export function BookingDetailScreen({ bookingId }) {
         {/* Hero + status */}
         <div className="overflow-hidden rounded-2xl border border-black/10 bg-white">
           <div className="relative h-40 w-full overflow-hidden bg-neutral-100">
-            <img src={images.hero} alt={shop.name} className={`h-full w-full object-cover ${shop.imagePosition}`} />
+            <img
+              src={shop.imageUrl || images.hero}
+              alt={shop.name}
+              className={`h-full w-full object-cover ${shop.imageUrl ? "object-center" : shop.imagePosition}`}
+            />
             <span className={`absolute left-3 top-3 inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${statusTones[status]}`}>
               {statusLabel}
             </span>
@@ -158,38 +188,74 @@ export function BookingDetailScreen({ bookingId }) {
           <h2 className="font-display text-base font-black">{t("dateTime")}</h2>
           {editing ? (
             <>
-              <div className="mt-3 grid grid-cols-4 gap-2">
-                {dates.map((d) => {
-                  const selected = draft.dateId === d.id;
+              <div className="mt-3 grid grid-cols-[34px_1fr_34px] items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMonth((m) => addMonths(m, -1))}
+                  disabled={atCurrentMonth}
+                  aria-label={t("prevMonth")}
+                  className="grid h-8 w-9 place-items-center rounded border border-black/20 disabled:opacity-40"
+                >
+                  <Icon name="ArrowLeft" className="h-4 w-4" />
+                </button>
+                <strong className="text-center text-neutral-500">{formatMonthLabel(viewMonth)}</strong>
+                <button
+                  type="button"
+                  onClick={() => setViewMonth((m) => addMonths(m, 1))}
+                  aria-label={t("nextMonth")}
+                  className="grid h-8 w-9 place-items-center rounded border border-black/20"
+                >
+                  <Icon name="ArrowLeft" className="h-4 w-4 rotate-180" />
+                </button>
+              </div>
+              <div className="mt-2 grid grid-cols-7 gap-1">
+                {WEEKDAYS_SHORT.map((day) => (
+                  <span key={day} className="text-center text-[0.72rem] font-black">{day}</span>
+                ))}
+                {grid.map((cell) => {
+                  const selected =
+                    cell.iso === draft.dateId ||
+                    (draft.dateId === "today" && cell.iso === todayIso);
+                  const disabled = cell.muted || cell.past || isWeeklyClosed(shop, cell.iso);
                   return (
                     <button
-                      key={d.id}
+                      key={cell.iso}
                       type="button"
-                      onClick={() => setDraft((s) => ({ ...s, dateId: d.id }))}
-                      className={`grid min-h-14 place-items-center rounded-lg border text-sm font-black ${
-                        selected ? "border-wash-500 bg-wash-500 text-white" : "border-black/15 bg-white"
+                      disabled={disabled}
+                      onClick={() => setDraft((s) => ({ ...s, dateId: cell.iso }))}
+                      className={`min-h-7 rounded-md text-sm font-bold ${
+                        selected
+                          ? "bg-wash-500 text-white shadow-cta"
+                          : disabled
+                            ? "text-neutral-300"
+                            : "text-ink"
                       }`}
                     >
-                      <span className="text-[0.7rem] uppercase">{t(d.label)}</span>
-                      <span>{d.number}</span>
+                      {cell.day}
                     </button>
                   );
                 })}
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                {times.map((time) => (
-                  <button
-                    key={time}
-                    type="button"
-                    onClick={() => setDraft((s) => ({ ...s, time }))}
-                    className={`min-h-11 rounded-md border text-sm font-black ${
-                      draft.time === time ? "border-wash-500 bg-wash-500 text-white" : "border-black/15 bg-white"
-                    }`}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
+              {editSlots.length === 0 ? (
+                <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-500">
+                  {editHours ? t("noSlotsToday") : t("closedOnDate")}
+                </p>
+              ) : (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {editSlots.map((time) => (
+                    <button
+                      key={time}
+                      type="button"
+                      onClick={() => setDraft((s) => ({ ...s, time }))}
+                      className={`min-h-11 rounded-md border text-sm font-black ${
+                        draft.time === time ? "border-wash-500 bg-wash-500 text-white" : "border-black/15 bg-white"
+                      }`}
+                    >
+                      {time}
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <p className="mt-2 flex items-center gap-2 text-sm text-neutral-700">
@@ -268,9 +334,9 @@ export function BookingDetailScreen({ bookingId }) {
               {!affordable ? (
                 <p className="text-center text-xs font-bold text-wash-600">{t("insufficientBalance")}</p>
               ) : null}
-              <Button onClick={saveEdit} disabled={!canSave} className="min-h-[52px] w-full rounded-2xl">
+              <Button onClick={saveEdit} disabled={!canSave || saving} className="min-h-[52px] w-full rounded-2xl">
                 <Icon name="Check" className="h-5 w-5" />
-                {t("saveChanges")}
+                {saving ? "…" : t("saveChanges")}
               </Button>
               <Button variant="secondary" onClick={() => setEditing(false)}>{t("discardChanges")}</Button>
             </>

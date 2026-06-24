@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { Ban, Check, Eye, RotateCcw, Store } from "lucide-react";
+import { Ban, Check, Eye, MapPin, RotateCcw, Search, Star, Store } from "lucide-react";
+import { userLocation } from "../../data/catalog.js";
 import { useAdminShops } from "../../lib/admin/useAdminShops.js";
 import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
 import { Button } from "../../components/ui/Button.jsx";
+import { InteractiveMap } from "../../components/map/InteractiveMapDynamic.jsx";
 import { cx } from "../../lib/cx.js";
+import { foldAccents } from "../../lib/booking.js";
 import { formatVnd } from "../owner/format.js";
 
 const FILTERS = [
@@ -28,13 +31,39 @@ const TYPE_FILTERS = [
 export function AdminShopsScreen() {
   const [filter, setFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const status = FILTERS.find(([key]) => key === filter)?.[2];
   const { shops, loading, approve, sendBack, suspend, reinstate } = useAdminShops(status);
   const [busyId, setBusyId] = useState(null);
+  // Overview map <-> list cross-highlight: clicking a pin selects + scrolls to
+  // the matching row. Refs are keyed by shop id for scrollIntoView.
+  const [selectedId, setSelectedId] = useState(null);
+  const rowRefs = useRef({});
 
-  const visibleShops = shops.filter(
-    (s) => typeFilter === "all" || (s.listing_type ?? "partner") === typeFilter
-  );
+  const needle = foldAccents(search.trim());
+  const visibleShops = shops.filter((s) => {
+    if (!(typeFilter === "all" || (s.listing_type ?? "partner") === typeFilter)) return false;
+    if (!needle) return true;
+    return foldAccents(`${s.name ?? ""} ${s.address ?? ""} ${s.district ?? ""}`).includes(needle);
+  });
+
+  // Shape the visible, geocoded shops for InteractiveMap; rows without a pin are
+  // dropped so the map only plots locatable shops.
+  const mapShops = visibleShops
+    .filter((s) => s.lat != null && s.lng != null)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      lat: s.lat,
+      lng: s.lng,
+      starting: s.starting_price,
+      listingType: s.listing_type
+    }));
+
+  function onSelectShop(id) {
+    setSelectedId(id);
+    rowRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   async function act(id, fn) {
     setBusyId(id);
@@ -97,7 +126,17 @@ export function AdminShopsScreen() {
         <p className="mt-1 text-sm text-neutral-500">Moderate every car wash on the platform.</p>
       </header>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="relative mt-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" aria-hidden="true" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search shops by name, address or district"
+          className="min-h-11 w-full rounded-full border border-black/10 bg-white pl-9 pr-4 text-sm outline-none focus:border-wash-500"
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
         {FILTERS.map(([key, label]) => (
           <button
             key={key}
@@ -135,6 +174,23 @@ export function AdminShopsScreen() {
         ))}
       </div>
 
+      {mapShops.length > 0 && (
+        <section className="mt-5">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-neutral-500">
+            <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+            Map
+          </p>
+          <InteractiveMap
+            shops={mapShops}
+            selectedId={selectedId}
+            onSelectShop={onSelectShop}
+            userLocation={userLocation}
+            className="h-64 w-full"
+            rounded="rounded-2xl"
+          />
+        </section>
+      )}
+
       {loading ? (
         <p className="mt-8 text-sm text-neutral-500">Loading…</p>
       ) : visibleShops.length === 0 ? (
@@ -147,8 +203,19 @@ export function AdminShopsScreen() {
           {visibleShops.map((shop) => {
             const busy = busyId === shop.id;
             const isDirectory = (shop.listing_type ?? "partner") === "directory";
+            const hasReviews = (shop.reviews_count ?? 0) > 0;
+            const selected = selectedId === shop.id;
             return (
-              <li key={shop.id} className="rounded-2xl border border-black/5 bg-white p-4">
+              <li
+                key={shop.id}
+                ref={(el) => {
+                  rowRefs.current[shop.id] = el;
+                }}
+                className={cx(
+                  "rounded-2xl border bg-white p-4 transition",
+                  selected ? "border-wash-500 ring-2 ring-wash-500/30" : "border-black/5"
+                )}
+              >
                 <div className="flex items-start gap-3">
                   <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-neutral-100">
                     {shop.image_url ? (
@@ -168,6 +235,21 @@ export function AdminShopsScreen() {
                           Directory
                         </span>
                       ) : null}
+                      <span
+                        className={cx(
+                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold",
+                          hasReviews ? "bg-amber-50 text-amber-700" : "bg-neutral-100 text-neutral-400"
+                        )}
+                      >
+                        <Star
+                          className={cx(
+                            "h-3.5 w-3.5",
+                            hasReviews ? "fill-amber-400 text-amber-400" : "text-neutral-300"
+                          )}
+                          aria-hidden="true"
+                        />
+                        {hasReviews ? `${shop.rating} (${shop.reviews_count})` : "No reviews"}
+                      </span>
                     </div>
                     <p className="mt-0.5 truncate text-sm text-neutral-500">
                       {shop.address || shop.district || "No address provided"}

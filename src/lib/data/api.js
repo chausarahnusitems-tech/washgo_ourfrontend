@@ -16,7 +16,7 @@ export async function fetchCatalog(supabase) {
   const [shopsRes, servicesRes, plansRes] = await Promise.all([
     supabase
       .from("shops")
-      .select("*, shop_services(service_id)")
+      .select("*, shop_services(service_id), shop_photos(url, sort_order, is_cover)")
       .eq("status", "approved")
       .eq("published", true),
     supabase.from("services").select("*").order("price"),
@@ -39,6 +39,9 @@ export async function fetchBookings(supabase, userId) {
       .from("bookings")
       .select("*, booking_services(service_id), shops(name)")
       .eq("user_id", userId)
+      // Hide unpaid card-checkout holds — they only become real bookings once the
+      // PayOS webhook confirms them (pending_payment -> upcoming).
+      .neq("status", "pending_payment")
       .order("created_at", { ascending: false })
   );
   return rows.map((row) =>
@@ -76,16 +79,39 @@ export async function rpcTopUp(supabase, amount, note = "Wallet top-up") {
   return unwrap(await supabase.rpc("top_up", { p_amount: amount, p_note: note }));
 }
 
-export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceIds, useVoucher }) {
+export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceIds, useVoucher, couponCode }) {
   return unwrap(
     await supabase.rpc("create_booking", {
       p_shop_id: shopId,
       p_date: date,
       p_slot: slot,
       p_service_ids: serviceIds,
-      p_use_voucher: Boolean(useVoucher)
+      p_use_voucher: Boolean(useVoucher),
+      p_coupon_code: couponCode || null
     })
   );
+}
+
+// Validate a promo/referral code against the readable coupons table (RLS allows
+// public select). Returns { code, percent, amountOff, description } or null when
+// the code is unknown or expired.
+export async function fetchCoupon(supabase, code) {
+  const clean = String(code ?? "").trim().toUpperCase();
+  if (!clean) return null;
+  const { data, error } = await supabase
+    .from("coupons")
+    .select("code, description, percent, amount_off, expires_at")
+    .eq("code", clean)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  if (data.expires_at && new Date(data.expires_at) < new Date(new Date().toDateString())) return null;
+  return {
+    code: data.code,
+    percent: data.percent ?? 0,
+    amountOff: data.amount_off ?? 0,
+    description: data.description ?? ""
+  };
 }
 
 export async function rpcUpdateBooking(supabase, { bookingId, date, slot, serviceIds }) {
@@ -131,7 +157,11 @@ const SHOP_WRITE_COLUMNS = [
   "name", "district", "address", "phone", "starting_price", "wait_minutes",
   "hours", "is_open", "promo", "lat", "lng", "image_url", "image_position",
   // Phase 5: structured hours + per-slot capacity (published is RPC-only).
-  "open_time", "close_time", "max_cars_per_slot", "slot_minutes"
+  "open_time", "close_time", "max_cars_per_slot", "slot_minutes",
+  // Promo video URL is owner-writable; video_feature_until is RPC-gated (paid).
+  "promo_video_url",
+  // Per-weekday opening hours (jsonb).
+  "weekly_hours"
 ];
 
 function pickShopColumns(payload) {
@@ -154,6 +184,12 @@ function withServiceIds(row) {
 
 function slugify(name) {
   const base = String(name ?? "")
+    // Fold Vietnamese (and other) diacritics first so "Thảo Điền" -> "thao-dien"
+    // instead of dropping the accented letters and leaving fragments.
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
@@ -281,6 +317,79 @@ export async function uploadShopPhoto(supabase, shopId, file) {
   return updateShop(supabase, shopId, { image_url: url });
 }
 
+// ---- Shop photo gallery (multiple images per shop) -------------------------
+
+export async function fetchShopPhotos(supabase, shopId) {
+  return unwrap(
+    await supabase
+      .from("shop_photos")
+      .select("*")
+      .eq("shop_id", shopId)
+      .order("is_cover", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true })
+  );
+}
+
+// Upload one gallery photo (distinct path per file so it never overwrites a
+// previous one) and record it in shop_photos. The first photo a shop gets is
+// auto-promoted to cover (and mirrored to shops.image_url for fast card reads).
+export async function addShopPhoto(supabase, shopId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const rand = Math.random().toString(36).slice(2, 10);
+  const path = `${shopId}/gallery/${Date.now()}-${rand}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from("shop-photos")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (upErr) throw upErr;
+  const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
+  const url = `${pub.publicUrl}?t=${Date.now()}`;
+
+  const existing = await fetchShopPhotos(supabase, shopId);
+  const isFirst = existing.length === 0;
+  const row = unwrap(
+    await supabase
+      .from("shop_photos")
+      .insert({ shop_id: shopId, url, sort_order: existing.length, is_cover: isFirst })
+      .select("*")
+      .single()
+  );
+  if (isFirst) await supabase.from("shops").update({ image_url: url }).eq("id", shopId);
+  return row;
+}
+
+export async function removeShopPhoto(supabase, photoId) {
+  return unwrap(await supabase.from("shop_photos").delete().eq("id", photoId));
+}
+
+// Promote one photo to cover: clear the flag on the rest, set it here, and mirror
+// the url onto shops.image_url (the denormalised cover the cards read).
+export async function setCoverPhoto(supabase, shopId, photoId, url) {
+  await supabase.from("shop_photos").update({ is_cover: false }).eq("shop_id", shopId);
+  unwrap(await supabase.from("shop_photos").update({ is_cover: true }).eq("id", photoId));
+  return updateShop(supabase, shopId, { image_url: url });
+}
+
+// ---- Promo video (paid feature) -------------------------------------------
+
+// Upload a promo video to the shop-videos bucket and point promo_video_url at it.
+export async function uploadShopVideo(supabase, shopId, file) {
+  const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+  const path = `${shopId}/promo.${ext}`;
+  const { error } = await supabase.storage
+    .from("shop-videos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("shop-videos").getPublicUrl(path);
+  const url = `${pub.publicUrl}?t=${Date.now()}`;
+  return updateShop(supabase, shopId, { promo_video_url: url });
+}
+
+// Buy/extend the paid promo-video feature (charges the owner's wallet).
+export async function rpcBuyShopVideoFeature(supabase, shopId) {
+  return unwrap(await supabase.rpc("buy_shop_video_feature", { p_shop_id: shopId }));
+}
+
 // Bookings made at the owner's shops (read-only — RLS grants select, not write).
 // Customer identity isn't exposed (profiles RLS scopes to self), so we surface
 // only the schedule/services/status.
@@ -289,8 +398,10 @@ export async function fetchOwnerBookings(supabase, shopIds) {
   const rows = unwrap(
     await supabase
       .from("bookings")
-      .select("*, booking_services(service_id), shops(name)")
+      .select("*, booking_services(service_id), shops(name), conversations(id)")
       .in("shop_id", shopIds)
+      // Owners only see confirmed bookings, not unpaid card-checkout holds.
+      .neq("status", "pending_payment")
       .order("scheduled_date", { ascending: false })
   );
   return rows.map((row) => ({
@@ -301,7 +412,10 @@ export async function fetchOwnerBookings(supabase, shopIds) {
     time: row.slot_time,
     services: (row.booking_services ?? []).map((s) => s.service_id),
     total: row.total ?? 0,
-    status: row.status ?? "upcoming"
+    status: row.status ?? "upcoming",
+    // The per-booking chat. [0] is safe: conversations_booking_id_key enforces at
+    // most one conversation per booking. RLS-scoped to threads the owner can see.
+    conversationId: row.conversations?.[0]?.id ?? null
   }));
 }
 
@@ -529,18 +643,50 @@ export async function fetchCustomServices(supabase, shopId) {
   );
 }
 
-export async function addCustomService(supabase, shopId, { name, price, isOffer }) {
+export async function addCustomService(supabase, shopId, { name, price, isOffer, imageUrl }) {
   return unwrap(
     await supabase
       .from("shop_custom_services")
-      .insert({ shop_id: shopId, name, price: Math.round(price), is_offer: Boolean(isOffer) })
+      .insert({
+        shop_id: shopId,
+        name,
+        price: Math.round(price),
+        is_offer: Boolean(isOffer),
+        image_url: imageUrl ?? null
+      })
       .select("*")
       .single()
   );
 }
 
+// Patch an existing custom service (e.g. attach/replace its image).
+export async function updateCustomService(supabase, id, patch) {
+  const allowed = {};
+  if ("name" in patch) allowed.name = patch.name;
+  if ("price" in patch) allowed.price = Math.round(patch.price);
+  if ("isOffer" in patch) allowed.is_offer = Boolean(patch.isOffer);
+  if ("imageUrl" in patch) allowed.image_url = patch.imageUrl ?? null;
+  return unwrap(
+    await supabase.from("shop_custom_services").update(allowed).eq("id", id).select("*").single()
+  );
+}
+
 export async function removeCustomService(supabase, id) {
   return unwrap(await supabase.from("shop_custom_services").delete().eq("id", id));
+}
+
+// Upload a per-service image to the shop-photos bucket under
+// '<shopId>/services/<serviceId>.<ext>' (covered by the bucket's owner RLS) and
+// return its public URL.
+export async function uploadServiceImage(supabase, shopId, serviceId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${shopId}/services/${serviceId}.${ext}`;
+  const { error } = await supabase.storage
+    .from("shop-photos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
+  return `${pub.publicUrl}?t=${Date.now()}`;
 }
 
 // Per-slot availability for a shop+date (counts + cap + closed). RLS-safe RPC.
@@ -580,7 +726,10 @@ export async function openSupportThread(supabase, userId) {
 export async function fetchConversations(supabase, kind = null) {
   let query = supabase
     .from("conversations")
-    .select("*, shops(name)")
+    // conversation_reads is RLS-scoped to the caller, so the embed resolves to
+    // the caller's own read mark (0 or 1 row) per conversation. bookings() (via
+    // booking_id) carries the session a per-booking thread is about.
+    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time)")
     .order("created_at", { ascending: false });
   if (kind) query = query.eq("kind", kind);
   const rows = unwrap(await query);
@@ -607,6 +756,17 @@ export async function fetchConversations(supabase, kind = null) {
 // by the list fetch and the single-conversation fetch so they stay in sync.
 // `person` is the created_by profile ({full_name,email,role}) or undefined.
 function mapConversationRow(r, person) {
+  // RLS scopes conversation_reads to the caller (0/1 row), but don't depend on
+  // that positionally — take the latest read mark across whatever rows return.
+  const lastReadAt = (r.conversation_reads ?? []).reduce(
+    (acc, x) => (x?.last_read_at && (!acc || x.last_read_at > acc) ? x.last_read_at : acc),
+    null
+  );
+  const lastMessageAt = r.last_message_at ?? null;
+  // Unread = there's a message and the caller's read mark is older (or missing).
+  // The caller's own sends mark the thread read, so this lights up only for new
+  // messages from the other party.
+  const unread = Boolean(lastMessageAt) && (!lastReadAt || new Date(lastMessageAt) > new Date(lastReadAt));
   return {
     id: r.id,
     kind: r.kind,
@@ -623,7 +783,15 @@ function mapConversationRow(r, person) {
     archivedAt: r.archived_at ?? null,
     archived: Boolean(r.archived_at),
     problemTags: r.problem_tags ?? [],
-    createdAt: r.created_at
+    createdAt: r.created_at,
+    lastMessageAt,
+    lastMessagePreview: r.last_message_preview ?? null,
+    lastReadAt,
+    unread,
+    // Per-booking shop threads carry the booked session (null for other threads).
+    bookingId: r.booking_id ?? null,
+    bookingDate: r.bookings?.scheduled_date ?? null,
+    bookingSlot: r.bookings?.slot_time ?? null
   };
 }
 
@@ -634,7 +802,7 @@ function mapConversationRow(r, person) {
 export async function fetchConversation(supabase, conversationId) {
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, shops(name)")
+    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time)")
     .eq("id", conversationId)
     .maybeSingle();
   if (error) throw error;
@@ -651,6 +819,15 @@ export async function fetchConversation(supabase, conversationId) {
   return mapConversationRow(data, person);
 }
 
+// For a shop owner messaging a customer: resolve the customer's name/phone for a
+// booking thread they own the shop of (profiles RLS is self-only, so this goes
+// through a SECURITY DEFINER RPC). Returns { full_name, phone } | null.
+export async function fetchConversationCustomer(supabase, conversationId) {
+  return unwrap(
+    await supabase.rpc("get_conversation_customer", { p_conv: conversationId })
+  );
+}
+
 export async function fetchMessages(supabase, conversationId) {
   return unwrap(
     await supabase
@@ -659,6 +836,12 @@ export async function fetchMessages(supabase, conversationId) {
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
   );
+}
+
+// Mark the caller's read position in a thread to now() (clears its unread flag).
+// Called when a thread is opened/viewed and after the caller sends.
+export async function markConversationRead(supabase, conversationId) {
+  return unwrap(await supabase.rpc("mark_conversation_read", { p_conv: conversationId }));
 }
 
 // Send a text and/or attachment message. `attachment` is { url, type } | null;

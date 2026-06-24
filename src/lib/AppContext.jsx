@@ -10,21 +10,27 @@ import {
   addFavorite,
   fetchBookings,
   fetchCatalog,
+  fetchCoupon,
   fetchFavorites,
   fetchTransactions,
   removeFavorite,
   rpcCancelBooking,
   rpcCreateBooking,
-  rpcTopUp,
   rpcUpdateBooking
 } from "./data/api.js";
 import {
+  getCouponDiscount,
   getCurrentShop,
+  getDiscount,
   getSelectedDateLabel,
+  getSubtotal,
   getTotal,
   initialState,
   toggleItem
 } from "./booking.js";
+import { userLocation } from "../data/catalog.js";
+import { formatDistanceKm, haversineKm } from "./data/adapters.js";
+import { useGeolocation } from "./useGeolocation.js";
 
 // Bump the version suffix when the persisted shape changes so returning users
 // pick up the new defaults/seed data instead of stale state.
@@ -44,9 +50,22 @@ function blankState() {
     pendingVoucher: false,
     bookings: [],
     favorites: [],
-    booking: null
+    booking: null,
+    // No demo vehicle defaults in backend mode — a real user fills these in (and
+    // the profile-completion reward depends on them actually being empty first).
+    vehicle: { model: "", plate: "", notes: "" },
+    promo: null
   };
 }
+
+// Promo/referral codes available in demo mode (mirrors the seeded public.coupons
+// rows so the offline demo can validate codes without a backend round-trip).
+const DEMO_COUPONS = {
+  WASHGO10: { code: "WASHGO10", percent: 10, amountOff: 0, description: "10% off your wash" },
+  SEASON15: { code: "SEASON15", percent: 15, amountOff: 0, description: "Seasonal 15% off" },
+  SHINE10: { code: "SHINE10", percent: 10, amountOff: 0, description: "10% off detailing" },
+  CLEAN20K: { code: "CLEAN20K", percent: 0, amountOff: 20000, description: "20.000₫ off your wash" }
+};
 
 // Restore persisted demo state so refreshing mid-flow keeps tokens, stamps and
 // the active booking. Only used in demo mode (backend mode is DB-driven).
@@ -78,6 +97,21 @@ export function AppProvider({ children }) {
   // Reference catalog (shops/services/plans). Seeded from the store (catalog.js
   // fallback) and replaced by the DB fetch in backend mode.
   const [catalog, setCatalogState] = useState(() => getCatalog());
+  // The device's real location (falls back to the seed point until granted),
+  // used to recompute shop distances so cards/lists reflect where the user
+  // actually is rather than a fixed seed point. (#8)
+  const liveLocation = useGeolocation(userLocation);
+  const liveCatalog = useMemo(() => {
+    if (!liveLocation || !catalog.shops?.length) return catalog;
+    return {
+      ...catalog,
+      shops: catalog.shops.map((s) => {
+        if (s.lat == null || s.lng == null) return s;
+        const km = haversineKm(liveLocation, { lat: s.lat, lng: s.lng });
+        return { ...s, distanceKm: km, distance: formatDistanceKm(km) };
+      })
+    };
+  }, [catalog, liveLocation]);
   // Wallet ledger for the signed-in user (backend mode only).
   const [transactions, setTransactions] = useState([]);
 
@@ -208,21 +242,23 @@ export function AppProvider({ children }) {
     };
   }, [demo, supabase]);
 
-  // Backend: persist the editable profile prefs (plan / vehicle / language).
-  // Balances (funds/stamps/voucher) are authoritative on the server and only
-  // move through the RPCs, so they are deliberately NOT written here.
+  // Backend: persist the editable profile prefs (vehicle / language) only.
+  // The membership tier (selected_plan) and balances (funds/stamps/voucher) are
+  // server-authoritative and move ONLY through the RPCs (start_membership /
+  // create_booking / …); writing selected_plan from this client-derived state
+  // could clobber a valid membership back to 'basic' (#11), and the column is no
+  // longer client-writable anyway.
   useEffect(() => {
     if (demo || !supabase || !auth.user) return;
     supabase
       .from("profiles")
       .update({
-        selected_plan: state.selectedPlan,
         vehicle: state.vehicle,
         lang: state.lang
       })
       .eq("id", auth.user.id)
       .then(() => {});
-  }, [demo, supabase, auth.user, state.selectedPlan, state.vehicle, state.lang]);
+  }, [demo, supabase, auth.user, state.vehicle, state.lang]);
 
   // Demo: persist everything to localStorage as the offline source of truth.
   useEffect(() => {
@@ -264,6 +300,47 @@ export function AppProvider({ children }) {
     );
   }, []);
 
+  // Re-pull server-authoritative account state (profile balances, bookings,
+  // wallet history). Used after returning from the hosted PayOS checkout, where
+  // the WEBHOOK — not the browser — has applied the change. Returns the fresh
+  // profile so the success page can poll until the top-up/booking has landed.
+  const refreshAccount = useCallback(async () => {
+    if (demo || !supabase) return null;
+    // Resolve the user directly rather than via auth.user — this is called right
+    // after the cross-site PayOS redirect, where onAuthStateChange may not have
+    // repopulated React auth state yet (otherwise it would read a stale null and
+    // skip the refresh, leaving the success page showing pre-payment balances).
+    const { data: { user } = {} } = await supabase.auth.getUser();
+    if (!user) return null;
+    try {
+      const [{ data: profile }, bookings, ledger] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        fetchBookings(supabase, user.id),
+        fetchTransactions(supabase, user.id)
+      ]);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const activeMember =
+        profile?.selected_plan === "premium" &&
+        profile?.membership_until &&
+        profile.membership_until >= todayIso;
+      if (profile) setAuth((prev) => ({ ...prev, profile }));
+      setTransactions(ledger);
+      setState((prev) => ({
+        ...prev,
+        funds: profile?.funds ?? prev.funds,
+        stamps: profile?.stamps ?? prev.stamps,
+        voucher: profile?.voucher ?? prev.voucher,
+        pendingVoucher: profile?.pending_voucher ?? prev.pendingVoucher,
+        selectedPlan: activeMember ? "premium" : "basic",
+        bookings
+      }));
+      return profile ?? null;
+    } catch (error) {
+      console.error("[washgo] refreshAccount failed", error);
+      return null;
+    }
+  }, [demo, supabase]);
+
   // ---- Preference actions (identical in both modes) -----------------------
 
   const setLang = useCallback((lang) => {
@@ -298,6 +375,79 @@ export function AppProvider({ children }) {
     setState((prev) => (prev.voucher ? { ...prev, pendingVoucher: true } : prev));
   }, []);
 
+  // ---- Promo / referral codes --------------------------------------------
+
+  // Validate a code and stash the resulting coupon so checkout can price it. The
+  // server re-validates and re-prices on confirm, so a tampered client can't pay
+  // less. Returns true when the code is accepted.
+  const applyPromo = useCallback(
+    async (code) => {
+      const clean = String(code ?? "").trim().toUpperCase();
+      if (!clean) return false;
+      if (demo) {
+        const coupon = DEMO_COUPONS[clean];
+        if (!coupon) return false;
+        setState((prev) => ({ ...prev, promo: coupon }));
+        return true;
+      }
+      try {
+        const coupon = await fetchCoupon(supabase, clean);
+        if (!coupon) return false;
+        setState((prev) => ({ ...prev, promo: coupon }));
+        return true;
+      } catch (error) {
+        console.error("[washgo] fetchCoupon failed", error);
+        return false;
+      }
+    },
+    [demo, supabase]
+  );
+
+  const clearPromo = useCallback(() => setState((prev) => ({ ...prev, promo: null })), []);
+
+  // ---- Profile-completion reward -----------------------------------------
+
+  // Has the user filled in the personal + vehicle details the free-wash reward
+  // needs? Mirrors the server's profile_is_complete (name, phone, model, plate).
+  const profileComplete = Boolean(
+    String(auth.profile?.full_name || "").trim() &&
+      String(auth.profile?.phone || "").trim() &&
+      String(auth.profile?.car_model || state.vehicle?.model || "").trim() &&
+      String(state.vehicle?.plate || "").trim()
+  );
+  const profileRewardClaimed = Boolean(auth.profile?.profile_reward_claimed);
+
+  // Claim the one-time free-wash voucher once the profile is complete. The server
+  // re-validates and is idempotent; returns true when a voucher was newly granted.
+  const claimProfileReward = useCallback(async () => {
+    if (demo) {
+      let granted = false;
+      setState((prev) => {
+        if (prev.voucher) return prev;
+        granted = true;
+        return { ...prev, voucher: true };
+      });
+      return granted;
+    }
+    if (!supabase || !auth.user) return false;
+    try {
+      const { data, error } = await supabase.rpc("complete_profile_reward");
+      if (error) throw error;
+      const voucher = Boolean(data?.voucher);
+      const stamps = data?.stamps;
+      setState((prev) => ({ ...prev, voucher, stamps: stamps ?? prev.stamps }));
+      setAuth((prev) =>
+        prev.profile
+          ? { ...prev, profile: { ...prev.profile, voucher, profile_reward_claimed: true } }
+          : prev
+      );
+      return Boolean(data?.granted);
+    } catch (error) {
+      console.error("[washgo] complete_profile_reward failed", error);
+      return false;
+    }
+  }, [demo, supabase, auth.user]);
+
   // ---- Wallet -------------------------------------------------------------
 
   const topUpFunds = useCallback(
@@ -309,18 +459,14 @@ export function AppProvider({ children }) {
         setState((prev) => ({ ...prev, funds: prev.funds + Math.round(value) }));
         return true;
       }
-      if (!auth.user) return false;
-      try {
-        const newBalance = await rpcTopUp(supabase, Math.round(value));
-        syncBalances({ funds: newBalance });
-        await refreshTransactions();
-        return true;
-      } catch (error) {
-        console.error("[washgo] top_up failed", error);
-        return false;
-      }
+      // Backend: real top-ups go through the hosted PayOS checkout (startCheckout)
+      // and are credited by the webhook — the client can no longer mint funds
+      // (top_up is revoked). Screens call startCheckout directly; this guard just
+      // catches any stray legacy caller.
+      console.warn("[washgo] topUpFunds is no-op in backend mode — use the gateway checkout");
+      return false;
     },
-    [demo, supabase, auth.user, syncBalances, refreshTransactions]
+    [demo]
   );
 
   // ---- Membership ---------------------------------------------------------
@@ -365,9 +511,12 @@ export function AppProvider({ children }) {
         let ok = false;
         setState((prev) => {
           const ids = serviceIdsArg ?? prev.selectedServices;
-          const baseTotal = getTotal(prev.selectedPlan, ids);
-          if (!baseTotal) return prev;
+          const subtotal = getSubtotal(ids);
+          if (subtotal <= 0) return prev;
           const redeeming = Boolean(prev.pendingVoucher && prev.voucher);
+          const membershipDiscount = getDiscount(prev.selectedPlan, ids);
+          const couponDiscount = redeeming ? 0 : getCouponDiscount(prev.promo, subtotal, membershipDiscount);
+          const baseTotal = Math.max(0, subtotal - membershipDiscount - couponDiscount);
           const charge = redeeming ? 0 : baseTotal;
           if (charge > prev.funds) return prev;
           ok = true;
@@ -387,6 +536,8 @@ export function AppProvider({ children }) {
             plan: prev.selectedPlan,
             freeWash: redeeming,
             earnedStamp: !redeeming,
+            // Remember the coupon basis so an edit re-prices with it (#12).
+            coupon: !redeeming && couponDiscount > 0 ? prev.promo : null,
             status: "upcoming"
           };
           if (redeeming) {
@@ -395,6 +546,7 @@ export function AppProvider({ children }) {
               voucher: false,
               pendingVoucher: false,
               stamps: 0,
+              promo: null,
               booking,
               bookings: [booking, ...prev.bookings]
             };
@@ -405,6 +557,7 @@ export function AppProvider({ children }) {
             funds: prev.funds - charge,
             stamps: nextStamps,
             voucher: nextStamps >= 5,
+            promo: null,
             booking,
             bookings: [booking, ...prev.bookings]
           };
@@ -423,7 +576,8 @@ export function AppProvider({ children }) {
           date: resolveBookingIso(state.selectedDate),
           slot: state.selectedTime,
           serviceIds,
-          useVoucher
+          useVoucher,
+          couponCode: useVoucher ? null : state.promo?.code
         });
         const bookings = await fetchBookings(supabase, auth.user.id);
         const booking = bookings.find((b) => b.id === res.booking_id) ?? bookings[0] ?? null;
@@ -433,6 +587,7 @@ export function AppProvider({ children }) {
           stamps: res.stamps,
           voucher: res.voucher,
           pendingVoucher: useVoucher ? false : prev.pendingVoucher,
+          promo: null,
           bookings,
           booking
         }));
@@ -448,7 +603,7 @@ export function AppProvider({ children }) {
         return false;
       }
     },
-    [demo, supabase, auth.user, state.selectedServices, state.selectedDate, state.selectedTime, state.pendingVoucher, state.voucher, refreshTransactions]
+    [demo, supabase, auth.user, state.selectedServices, state.selectedDate, state.selectedTime, state.pendingVoucher, state.voucher, state.promo, refreshTransactions]
   );
 
   const updateBooking = useCallback(
@@ -463,7 +618,15 @@ export function AppProvider({ children }) {
           const dateId = patch.dateId ?? existing.dateId;
           const time = patch.time ?? existing.time;
           const plan = existing.plan ?? prev.selectedPlan;
-          const newTotal = getTotal(plan, services);
+          // Re-apply the booking's original coupon and free-wash status so an
+          // unrelated date/time edit doesn't silently re-charge it (#12).
+          const membershipDiscount = getDiscount(plan, services);
+          const couponDiscount = existing.coupon
+            ? getCouponDiscount(existing.coupon, getSubtotal(services), membershipDiscount)
+            : 0;
+          const newTotal = existing.freeWash
+            ? 0
+            : Math.max(0, getSubtotal(services) - membershipDiscount - couponDiscount);
           const date = dateId
             ? getSelectedDateLabel(dateId, (key) => copy[prev.lang][key] ?? copy.en[key] ?? key)
             : existing.date;
@@ -528,14 +691,17 @@ export function AppProvider({ children }) {
           const updated = { ...existing, status: "cancelled" };
           const bookings = [...prev.bookings];
           bookings[index] = updated;
+          // A free-wash booking consumed the voucher (stamps were already reset on
+          // redeem). On cancel, give the voucher back rather than destroying the
+          // hard-earned reward (#10). Otherwise reverse the stamp it granted.
           const nextStamps = Math.max(0, prev.stamps - (existing.earnedStamp ? 1 : 0));
-          const stillUnlocked = nextStamps >= 5;
+          const voucher = existing.freeWash ? true : nextStamps >= 5;
           return {
             ...prev,
             funds: prev.funds + existing.total,
             stamps: nextStamps,
-            voucher: stillUnlocked,
-            pendingVoucher: stillUnlocked ? prev.pendingVoucher : false,
+            voucher,
+            pendingVoucher: existing.freeWash ? false : voucher ? prev.pendingVoucher : false,
             bookings,
             booking: prev.booking?.id === id ? updated : prev.booking
           };
@@ -579,13 +745,14 @@ export function AppProvider({ children }) {
           const wasUpcoming = (existing.status ?? "upcoming") === "upcoming";
           const refund = wasUpcoming ? existing.total : 0;
           const nextStamps = Math.max(0, prev.stamps - (wasUpcoming && existing.earnedStamp ? 1 : 0));
-          const stillUnlocked = nextStamps >= 5;
+          // Restore the voucher when deleting an upcoming free-wash booking (#10).
+          const voucher = wasUpcoming && existing.freeWash ? true : nextStamps >= 5;
           return {
             ...prev,
             funds: prev.funds + refund,
             stamps: nextStamps,
-            voucher: stillUnlocked,
-            pendingVoucher: stillUnlocked ? prev.pendingVoucher : false,
+            voucher,
+            pendingVoucher: wasUpcoming && existing.freeWash ? false : voucher ? prev.pendingVoucher : false,
             bookings: prev.bookings.filter((item) => item.id !== id),
             booking: prev.booking?.id === id ? null : prev.booking
           };
@@ -725,9 +892,11 @@ export function AppProvider({ children }) {
       auth,
       mode: demo ? "demo" : "backend",
       requireAuth,
-      catalog,
+      catalog: liveCatalog,
+      liveLocation,
       transactions,
       refreshTransactions,
+      refreshAccount,
       signOut,
       updateProfile,
       uploadAvatar,
@@ -746,6 +915,12 @@ export function AppProvider({ children }) {
       cancelBooking,
       deleteBooking,
       redeemVoucher,
+      applyPromo,
+      clearPromo,
+      promo: state.promo,
+      profileComplete,
+      profileRewardClaimed,
+      claimProfileReward,
       toggleFavorite,
       resetDemo
     }),
@@ -755,9 +930,11 @@ export function AppProvider({ children }) {
       auth,
       demo,
       requireAuth,
-      catalog,
+      liveCatalog,
+      liveLocation,
       transactions,
       refreshTransactions,
+      refreshAccount,
       signOut,
       updateProfile,
       uploadAvatar,
@@ -776,6 +953,11 @@ export function AppProvider({ children }) {
       cancelBooking,
       deleteBooking,
       redeemVoucher,
+      applyPromo,
+      clearPromo,
+      profileComplete,
+      profileRewardClaimed,
+      claimProfileReward,
       toggleFavorite,
       resetDemo
     ]

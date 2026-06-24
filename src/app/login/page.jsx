@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client.js";
 import { Button } from "../../components/ui/Button.jsx";
 
+// Only allow same-origin relative redirect targets from ?next= (open-redirect
+// safe — reject protocol-relative `//`, backslash, and absolute URLs).
+function safeNextPath(raw) {
+  if (raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\")) return raw;
+  return "/";
+}
+
 // Progressive-access auth: the app is usable signed-out, so this screen is
 // opt-in. Two explicit modes — "signin" for existing users, "signup" for new
 // ones (collects a name, saved to the profile via the auth trigger) — plus
@@ -20,9 +27,16 @@ export default function LoginPage() {
 
   const isSignup = mode === "signup";
   const isReset = mode === "reset";
+  // Return path from a gated flow (e.g. /login?next=/shops/<id>/book). The
+  // /auth/callback route re-sanitises and honours `next` for OAuth/email; the
+  // password paths assign it directly. (#7)
+  const nextPath =
+    typeof window !== "undefined"
+      ? safeNextPath(new URLSearchParams(window.location.search).get("next"))
+      : "/";
   const redirectTo =
     typeof window !== "undefined"
-      ? `${window.location.origin}/auth/callback`
+      ? `${window.location.origin}/auth/callback${nextPath !== "/" ? `?next=${encodeURIComponent(nextPath)}` : ""}`
       : undefined;
   const notConfigured = "Sign-in isn't configured yet — add Supabase env vars.";
 
@@ -91,7 +105,7 @@ export default function LoginPage() {
       if (!data.session) return setStatus("check-email");
       // Full reload so AppProvider re-initialises with the new session cookie
       // and the signed-in UI (avatar/profile) shows on the FIRST attempt.
-      window.location.assign("/");
+      window.location.assign(nextPath);
       return;
     }
 
@@ -99,7 +113,7 @@ export default function LoginPage() {
     if (error) return setStatus(error.message);
     // Full reload (not router.push) so the session is picked up immediately —
     // avoids the "have to sign in twice" propagation gap.
-    if (data.session) window.location.assign("/");
+    if (data.session) window.location.assign(nextPath);
   }
 
   // Send the user to the Sign-in tab when their email already has an account.
