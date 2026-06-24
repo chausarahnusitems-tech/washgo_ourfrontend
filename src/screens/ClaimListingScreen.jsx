@@ -8,6 +8,7 @@ import { useApp } from "../lib/AppContext.jsx";
 import { createClient } from "../lib/supabase/client.js";
 import { fetchMyListingClaim, submitListingClaim, submitNewListing } from "../lib/data/api.js";
 import { userLocation } from "../data/catalog.js";
+import { useGeolocation } from "../lib/useGeolocation.js";
 import { InteractiveMap } from "../components/map/InteractiveMapDynamic.jsx";
 import { AddressSearch } from "../components/owner/AddressSearch.jsx";
 import { Button } from "../components/ui/Button.jsx";
@@ -44,6 +45,9 @@ export function ClaimListingScreen({ shopId = null, isNew = false }) {
   const router = useRouter();
   const { auth, requireAuth, mode, catalog } = useApp();
   const supabase = useMemo(() => createClient(), []);
+  // Live device location so the "recenter" button snaps the picker back to the
+  // owner (e.g. when they're standing at the shop), not a fixed seed point.
+  const liveLocation = useGeolocation(userLocation);
 
   const catalogShops = catalog.shops ?? [];
   const shop = isNew ? null : catalogShops.find((s) => s.id === shopId) ?? null;
@@ -289,7 +293,8 @@ export function ClaimListingScreen({ shopId = null, isNew = false }) {
               shops={coords ? [{ id: "new", lat: coords.lat, lng: coords.lng }] : []}
               selectedId={coords ? "new" : null}
               onPick={(lat, lng) => setCoords({ lat, lng })}
-              userLocation={userLocation}
+              userLocation={liveLocation}
+              showRecenter
             />
           </div>
           {coords ? (
