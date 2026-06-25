@@ -303,7 +303,7 @@ function OwnerToolsCard() {
       {isOwner ? (
         <div className="mt-3">
           <p className="text-sm text-neutral-600">{t("ownerApproved")}</p>
-          <Button className="mt-3" onClick={() => router.push("/owner")}>
+          <Button className="mt-3" onClick={() => exitCustomerPortal(router, "/owner")}>
             <Icon name="Sparkles" className="h-4 w-4" />
             {t("openOwnerDashboard")}
           </Button>

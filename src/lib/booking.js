@@ -109,25 +109,31 @@ export function getShopById(id) {
   return shops.find((shop) => shop.id === id) ?? null;
 }
 
-export function getSelectedServices(selectedServiceIds) {
-  const { services } = getCatalog();
+// Resolve selected ids to priceable service objects. `services` defaults to the
+// global catalogue, but the booking screens pass a shop-specific list (catalogue
+// services the shop offers + its own custom services) so per-shop custom services
+// (uuid ids, not in the global catalogue) price and render correctly.
+export function getSelectedServices(selectedServiceIds, services = getCatalog().services) {
   const selected = new Set(selectedServiceIds);
-  return services.filter((service) => selected.has(service.id));
+  return (services ?? []).filter((service) => selected.has(service.id));
 }
 
-export function getSubtotal(selectedServiceIds) {
-  return getSelectedServices(selectedServiceIds).reduce((sum, service) => sum + service.price, 0);
+export function getSubtotal(selectedServiceIds, services) {
+  return getSelectedServices(selectedServiceIds, services).reduce((sum, service) => sum + service.price, 0);
 }
 
 // Premium members get 10% off, rounded to the nearest 1,000 VND.
-export function getDiscount(selectedPlan, selectedServiceIds) {
-  const subtotal = getSubtotal(selectedServiceIds);
+export function getDiscount(selectedPlan, selectedServiceIds, services) {
+  const subtotal = getSubtotal(selectedServiceIds, services);
   if (selectedPlan !== "premium" || subtotal <= 0) return 0;
   return Math.round((subtotal * 0.1) / 1000) * 1000;
 }
 
-export function getTotal(selectedPlan, selectedServiceIds) {
-  return Math.max(0, getSubtotal(selectedServiceIds) - getDiscount(selectedPlan, selectedServiceIds));
+export function getTotal(selectedPlan, selectedServiceIds, services) {
+  return Math.max(
+    0,
+    getSubtotal(selectedServiceIds, services) - getDiscount(selectedPlan, selectedServiceIds, services)
+  );
 }
 
 // Discount from an applied promo/referral coupon ({ percent, amountOff }), priced
@@ -328,7 +334,7 @@ export function generateSlots(openTime, closeTime, slotMinutes = 60) {
 // Parse a stored slot label into 24h {hours, minutes}. Handles both the legacy
 // 12h dotted format ("10.00AM", "12.30PM", "2.00PM") and the structured 24h
 // format from generateSlots ("10:00", "14:30"). Returns null when unparseable.
-function parseSlotTime(time) {
+export function parseSlotTime(time) {
   if (typeof time !== "string") return null;
   const match = /^\s*(\d{1,2})[:.](\d{2})\s*([AaPp][Mm])?\s*$/.exec(time);
   if (!match) return null;
@@ -369,23 +375,29 @@ export function isBookingElapsed(booking) {
   return Boolean(when && when.getTime() < Date.now());
 }
 
-// Effective status. Cancelled/completed are terminal and kept as recorded; an
-// "upcoming" booking whose slot has already passed is treated as completed so it
-// moves out of the upcoming list and into history automatically (no background
-// job needed). Bookings without an explicit status default to upcoming (covers
-// older persisted state that predates the status field).
+// Effective status — authoritative from the record. A booking is only
+// 'completed' once the shop owner finishes the arrival -> plate-scan confirmation
+// sequence (owner_complete_booking writes status='completed'). An
+// elapsed-but-unconfirmed booking stays 'upcoming' (or 'arrived' once checked in)
+// rather than being auto-completed by the clock. Missing status defaults to
+// upcoming (covers older persisted state predating the field).
 export function getBookingStatus(booking) {
-  const stored = booking?.status ?? "upcoming";
-  if (stored !== "upcoming") return stored;
-  return isBookingElapsed(booking) ? "completed" : "upcoming";
+  return booking?.status ?? "upcoming";
+}
+
+// "Active" bookings shown in the upcoming list: still to happen ('upcoming') or
+// currently being serviced ('in_progress', i.e. the owner checked the car in).
+// Both are pre-completion, so they stay out of History until the wash is done.
+function isActiveStatus(status) {
+  return status === "upcoming" || status === "in_progress";
 }
 
 export function getUpcomingBookings(bookings) {
-  return (bookings ?? []).filter((booking) => getBookingStatus(booking) === "upcoming");
+  return (bookings ?? []).filter((booking) => isActiveStatus(getBookingStatus(booking)));
 }
 
 export function getHistoryBookings(bookings) {
-  return (bookings ?? []).filter((booking) => getBookingStatus(booking) !== "upcoming");
+  return (bookings ?? []).filter((booking) => !isActiveStatus(getBookingStatus(booking)));
 }
 
 // The most recent past booking, for the home "Previous Booking" card. Real

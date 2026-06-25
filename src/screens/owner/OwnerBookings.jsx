@@ -69,7 +69,7 @@ export function OwnerBookings({ shopId }) {
               </p>
               <p className="mt-0.5 truncate text-xs text-neutral-500">
                 {b.services.length
-                  ? b.services.map((id) => t(id)).join(", ")
+                  ? b.services.map((s) => s.name ?? t(s.id)).join(", ")
                   : "No services"}
               </p>
             </div>

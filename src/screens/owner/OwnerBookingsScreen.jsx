@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarClock, Clock, MessageCircle, Store } from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { createClient } from "../../lib/supabase/client.js";
 import { fetchOwnerShops, fetchOwnerBookings } from "../../lib/data/api.js";
-import { getBookingStatus } from "../../lib/booking.js";
 import { parseIsoDate } from "../../lib/calendar.js";
 import { formatVnd } from "./format.js";
+import { BookingConfirm } from "../../components/owner/BookingConfirm.jsx";
+import { ShopScopePicker } from "../../components/owner/ShopScopePicker.jsx";
 
 // Parse a slot label ("9.00AM", "12.30PM") into minutes-of-day so timeslots sort
 // chronologically rather than lexically. Unparseable labels sort last.
@@ -23,63 +24,80 @@ function slotToMinutes(label) {
   return h * 60 + min;
 }
 
-// Owner's upcoming bookings across all their shops, grouped by date and sorted by
-// date then timeslot. Each booking links to its per-booking chat with the
-// customer. RLS scopes bookings to the owner's shops.
+// Today's local date as an ISO 'YYYY-MM-DD' string, to compare against the
+// stored scheduled_date (also ISO) without timezone drift.
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Owner's active bookings across all their shops, grouped by date and sorted by
+// date then timeslot. Each booking carries the arrival/completion confirmation
+// control (intake photo + plate scan) and a link to its per-booking chat. RLS
+// scopes bookings to the owner's shops.
 export function OwnerBookingsScreen() {
   const { auth, t, lang } = useApp();
   const supabase = useMemo(() => createClient(), []);
   const locale = lang === "vi" ? "vi-VN" : "en-US";
   const uid = auth.user?.id ?? null;
   const [bookings, setBookings] = useState([]);
+  const [shops, setShops] = useState([]);
+  const [scope, setScope] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    if (!supabase || !uid) {
-      setLoading(false);
-      return undefined;
-    }
-    setLoading(true);
-    setError(false);
-    (async () => {
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!supabase || !uid) {
+        setLoading(false);
+        return;
+      }
+      if (!silent) setLoading(true);
+      setError(false);
       try {
-        const shops = await fetchOwnerShops(supabase, uid);
-        const rows = await fetchOwnerBookings(
-          supabase,
-          shops.map((s) => s.id)
+        const ownerShops = await fetchOwnerShops(supabase, uid);
+        setShops(ownerShops);
+        const rows = await fetchOwnerBookings(supabase, ownerShops.map((s) => s.id));
+        const today = todayIso();
+        // Active jobs the owner can act on: anything in progress (checked in),
+        // plus upcoming bookings from today onward (so a just-passed slot can
+        // still be confirmed). Completed/cancelled/missed rows drop out.
+        setBookings(
+          rows.filter(
+            (b) => b.status === "in_progress" || (b.status === "upcoming" && b.date >= today)
+          )
         );
-        // Time-aware "upcoming": an elapsed booking that was never flipped to
-        // completed shouldn't linger here (matches the customer-side helper).
-        if (active) {
-          setBookings(
-            rows.filter((b) => getBookingStatus({ status: b.status, dateId: b.date, time: b.time }) === "upcoming")
-          );
-        }
       } catch (err) {
         console.error("[washgo] load owner bookings failed", err);
-        if (active) setError(true);
+        setError(true);
       } finally {
-        if (active) setLoading(false);
+        if (!silent) setLoading(false);
       }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [supabase, uid]);
+    },
+    [supabase, uid]
+  );
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Narrow to one shop when the owner picks it (default: all shops).
+  const scopedBookings = useMemo(
+    () => (scope === "all" ? bookings : bookings.filter((b) => b.shopId === scope)),
+    [bookings, scope]
+  );
 
   // Group by date (asc), bookings within a date sorted by timeslot (asc).
   const groups = useMemo(() => {
     const byDate = new Map();
-    for (const b of bookings) {
+    for (const b of scopedBookings) {
       if (!byDate.has(b.date)) byDate.set(b.date, []);
       byDate.get(b.date).push(b);
     }
     return [...byDate.entries()]
       .sort((a, b) => new Date(a[0]) - new Date(b[0]))
       .map(([date, list]) => [date, list.sort((x, y) => slotToMinutes(x.time) - slotToMinutes(y.time))]);
-  }, [bookings]);
+  }, [scopedBookings]);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8 lg:px-10">
@@ -87,6 +105,12 @@ export function OwnerBookingsScreen() {
         <h1 className="font-display text-2xl font-black">{t("upcomingBookings")}</h1>
         <p className="mt-1 text-sm text-neutral-500">{t("upcomingBookingsSub")}</p>
       </header>
+
+      {shops.length > 1 && (
+        <div className="mt-4">
+          <ShopScopePicker shops={shops} value={scope} onChange={setScope} allLabel={t("ownerAllShops")} />
+        </div>
+      )}
 
       {loading ? (
         <p className="mt-8 text-sm text-neutral-500">{t("loading")}</p>
@@ -114,31 +138,42 @@ export function OwnerBookingsScreen() {
               </h2>
               <ul className="mt-2 grid gap-2">
                 {list.map((b) => (
-                  <li
-                    key={b.id}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-black/5 bg-white p-4"
-                  >
-                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-ink">
-                      <Clock className="h-4 w-4 text-wash-500" aria-hidden="true" />
-                      {b.time}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-sm text-neutral-600">
-                      <Store className="h-4 w-4 text-neutral-400" aria-hidden="true" />
-                      {b.shop}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-neutral-500">
-                      {b.services.length ? b.services.map((id) => t(id)).join(", ") : t("noServices")}
-                    </span>
-                    <span className="text-sm font-bold text-ink">{formatVnd(b.total)}</span>
-                    {b.conversationId && (
-                      <Link
-                        href={`/owner/messages?c=${b.conversationId}`}
-                        className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1.5 text-xs font-bold text-neutral-600 transition hover:bg-neutral-50"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                        {t("openChat")}
-                      </Link>
-                    )}
+                  <li key={b.id} className="rounded-2xl border border-black/5 bg-white p-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <span className="inline-flex items-center gap-1.5 text-sm font-bold text-ink">
+                        <Clock className="h-4 w-4 text-wash-500" aria-hidden="true" />
+                        {b.time}
+                      </span>
+                      {b.status === "in_progress" && (
+                        <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[0.65rem] font-black uppercase tracking-wide text-amber-600">
+                          {t("statusInProgress")}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1.5 text-sm text-neutral-600">
+                        <Store className="h-4 w-4 text-neutral-400" aria-hidden="true" />
+                        {b.shop}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-neutral-500">
+                        {b.services.length ? b.services.map((s) => s.name ?? t(s.id)).join(", ") : t("noServices")}
+                      </span>
+                      <span className="text-sm font-bold text-ink">{formatVnd(b.total)}</span>
+                      {b.conversationId && (
+                        <Link
+                          href={`/owner/messages?c=${b.conversationId}`}
+                          className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1.5 text-xs font-bold text-neutral-600 transition hover:bg-neutral-50"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("openChat")}
+                        </Link>
+                      )}
+                    </div>
+                    <div className="mt-3 border-t border-black/5 pt-3">
+                      <BookingConfirm
+                        booking={b}
+                        supabase={supabase}
+                        onChanged={() => load({ silent: true })}
+                      />
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -23,6 +23,28 @@ export async function startCheckout(payload) {
   }
 }
 
+// DEV-ONLY: credit the signed-in user's wallet via the gated /api/dev/add-funds
+// route. Returns the new balance, or null on failure / when the route is locked
+// (it 404s in production or without the DEV_WALLET_UNLOCK flag). The real gating
+// + the funds-minting capability live entirely on the server — this is just the
+// fetch.
+export async function devAddFunds(amount) {
+  try {
+    const res = await fetch("/api/dev/add-funds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(amount ? { amount } : {})
+    });
+    const data = await res.json().catch(() => ({}));
+    // Surface the server's reason (e.g. service_role_missing, not_signed_in,
+    // not_found) so dev-mode debugging is one glance, not a round-trip.
+    if (!res.ok) return { error: data.error || `http_${res.status}` };
+    return { funds: typeof data.funds === "number" ? data.funds : null };
+  } catch {
+    return { error: "network_error" };
+  }
+}
+
 // Tell the server the user aborted, so it can release the held slot / cancel the
 // PayOS link immediately. Best-effort — failures are ignored.
 export async function abortCheckout(orderCode) {

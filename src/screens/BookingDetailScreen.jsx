@@ -27,8 +27,10 @@ import { TopBar } from "../components/layout/TopBar.jsx";
 
 const statusTones = {
   upcoming: "bg-wash-50 text-wash-600",
+  in_progress: "bg-amber-50 text-amber-600",
   completed: "bg-emerald-50 text-emerald-600",
-  cancelled: "bg-neutral-100 text-neutral-500"
+  cancelled: "bg-neutral-100 text-neutral-500",
+  missed: "bg-red-50 text-red-600"
 };
 
 export function BookingDetailScreen({ bookingId }) {
@@ -75,13 +77,22 @@ export function BookingDetailScreen({ bookingId }) {
   const ownServices = (shop?.services ?? [])
     .map((id) => allServices.find((s) => s.id === id))
     .filter(Boolean);
-  const bookableServices = ownServices.length
+  const baseServices = ownServices.length
     ? ownServices
     : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id));
+  const customServices = (shop?.customServices ?? []).map((c) => ({
+    id: c.id,
+    price: c.price,
+    name: c.name,
+    icon: "Sparkles"
+  }));
+  const bookableServices = [...baseServices, ...customServices];
   const statusLabel = {
     upcoming: t("statusUpcoming"),
+    in_progress: t("statusInProgress"),
     completed: t("statusCompleted"),
-    cancelled: t("statusCancelled")
+    cancelled: t("statusCancelled"),
+    missed: t("statusMissed")
   }[status];
 
   // Price edits under the plan the booking was made on (not the current plan),
@@ -90,10 +101,10 @@ export function BookingDetailScreen({ bookingId }) {
 
   // Totals preview the draft while editing, otherwise reflect the stored booking.
   const viewServices = editing ? draft.services : booking.services;
-  const selectedServices = getSelectedServices(viewServices);
-  const subtotal = getSubtotal(viewServices);
-  const discount = getDiscount(pricingPlan, viewServices);
-  const draftTotal = getTotal(pricingPlan, draft.services);
+  const selectedServices = getSelectedServices(viewServices, bookableServices);
+  const subtotal = getSubtotal(viewServices, bookableServices);
+  const discount = getDiscount(pricingPlan, viewServices, bookableServices);
+  const draftTotal = getTotal(pricingPlan, draft.services, bookableServices);
   const total = editing ? draftTotal : booking.total;
   // A pricier edit must be covered by the wallet (only the extra is charged).
   const extraCharge = Math.max(0, draftTotal - booking.total);
@@ -284,7 +295,7 @@ export function BookingDetailScreen({ bookingId }) {
                   >
                     <span className="inline-flex items-center gap-2">
                       <Icon name={service.icon} className="h-4 w-4" />
-                      <strong>{t(service.id)}</strong>
+                      <strong>{service.name ?? t(service.id)}</strong>
                     </span>
                     <span>{formatVnd(service.price)} · {selected ? t("selected") : t("add")}</span>
                   </button>
@@ -297,7 +308,7 @@ export function BookingDetailScreen({ bookingId }) {
                 <div key={service.id} className="flex justify-between">
                   <span className="inline-flex items-center gap-2">
                     <Icon name={service.icon} className="h-4 w-4" />
-                    {t(service.id)}
+                    {service.name ?? t(service.id)}
                   </span>
                   <strong>{formatVnd(service.price)}</strong>
                 </div>

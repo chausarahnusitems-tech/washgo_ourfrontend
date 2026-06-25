@@ -513,11 +513,14 @@ export function AppProvider({ children }) {
           const ids = serviceIdsArg ?? prev.selectedServices;
           const subtotal = getSubtotal(ids);
           if (subtotal <= 0) return prev;
-          const redeeming = Boolean(prev.pendingVoucher && prev.voucher);
+          // The free-wash voucher only engages when the standard car wash is in the
+          // cart, and it covers ONLY that wash — extra services are still charged.
+          const redeeming = Boolean(prev.pendingVoucher && prev.voucher && ids.includes("exterior"));
           const membershipDiscount = getDiscount(prev.selectedPlan, ids);
           const couponDiscount = redeeming ? 0 : getCouponDiscount(prev.promo, subtotal, membershipDiscount);
           const baseTotal = Math.max(0, subtotal - membershipDiscount - couponDiscount);
-          const charge = redeeming ? 0 : baseTotal;
+          const freeWashAmount = redeeming ? getSubtotal(["exterior"]) : 0;
+          const charge = Math.max(0, baseTotal - freeWashAmount);
           if (charge > prev.funds) return prev;
           ok = true;
           const shop = getCurrentShop(shopId);
@@ -543,6 +546,8 @@ export function AppProvider({ children }) {
           if (redeeming) {
             return {
               ...prev,
+              // Voucher covers the standard wash; still pay for any extra services.
+              funds: prev.funds - charge,
               voucher: false,
               pendingVoucher: false,
               stamps: 0,
@@ -569,7 +574,9 @@ export function AppProvider({ children }) {
       if (!auth.user) return false;
       const serviceIds = serviceIdsArg ?? state.selectedServices;
       if (!serviceIds.length) return false;
-      const useVoucher = Boolean(state.pendingVoucher && state.voucher);
+      // The voucher only applies when the standard car wash is in the cart (the
+      // server requires it and charges for any extra services).
+      const useVoucher = Boolean(state.pendingVoucher && state.voucher && serviceIds.includes("exterior"));
       try {
         const res = await rpcCreateBooking(supabase, {
           shopId,
@@ -624,9 +631,13 @@ export function AppProvider({ children }) {
           const couponDiscount = existing.coupon
             ? getCouponDiscount(existing.coupon, getSubtotal(services), membershipDiscount)
             : 0;
-          const newTotal = existing.freeWash
-            ? 0
-            : Math.max(0, getSubtotal(services) - membershipDiscount - couponDiscount);
+          const baseTotal = Math.max(0, getSubtotal(services) - membershipDiscount - couponDiscount);
+          // A free-wash booking keeps the standard wash free on edit (when it's
+          // still selected); everything else is charged.
+          const newTotal =
+            existing.freeWash && services.includes("exterior")
+              ? Math.max(0, baseTotal - getSubtotal(["exterior"]))
+              : baseTotal;
           const date = dateId
             ? getSelectedDateLabel(dateId, (key) => copy[prev.lang][key] ?? copy.en[key] ?? key)
             : existing.date;

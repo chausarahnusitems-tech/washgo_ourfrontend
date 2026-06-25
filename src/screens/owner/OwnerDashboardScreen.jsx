@@ -1,23 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarClock, Coins, Plus, Store } from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { useOwnerShops } from "../../lib/owner/useOwnerShops.js";
 import { createClient } from "../../lib/supabase/client.js";
 import { fetchOwnerBookings } from "../../lib/data/api.js";
 import { ShopStatusBadge } from "../../components/owner/ShopStatusBadge.jsx";
+import { ShopScopePicker } from "../../components/owner/ShopScopePicker.jsx";
+import { OwnerAnalytics } from "../../components/owner/OwnerAnalytics.jsx";
 import { Button } from "../../components/ui/Button.jsx";
 import { formatVnd } from "./format.js";
 
 export function OwnerDashboardScreen() {
-  const { auth } = useApp();
+  const { auth, t } = useApp();
   const { shops, loading } = useOwnerShops();
   const supabase = useMemo(() => createClient(), []);
-  const name = auth.profile?.full_name || "there";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const name = auth.profile?.full_name || t("dashThere");
 
-  // Aggregate bookings across all the owner's shops for revenue + counts.
+  // Aggregate bookings across all the owner's shops for revenue + counts + the
+  // analytics charts; the per-shop split filters this client-side.
   const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
   const [bookings, setBookings] = useState([]);
   useEffect(() => {
@@ -34,35 +40,69 @@ export function OwnerDashboardScreen() {
     };
   }, [supabase, shopIds]);
 
-  // Revenue = total of every non-cancelled booking at the owner's shops.
-  const revenue = bookings
-    .filter((b) => b.status !== "cancelled")
+  // Multi-shop scope. Default 'all' (one overall dashboard); an owner with more
+  // than one shop can narrow to a single shop. Persisted in the URL (?shop=) to
+  // mirror the owner shop-form's ?tab= pattern.
+  const scopeParam = searchParams.get("shop");
+  const scope = scopeParam && shopIds.includes(scopeParam) ? scopeParam : "all";
+  const setScope = useCallback(
+    (next) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "all") params.delete("shop");
+      else params.set("shop", next);
+      const qs = params.toString();
+      router.replace(qs ? `/owner?${qs}` : "/owner", { scroll: false });
+    },
+    [router, searchParams]
+  );
+
+  const scoped = useMemo(
+    () => (scope === "all" ? bookings : bookings.filter((b) => b.shopId === scope)),
+    [bookings, scope]
+  );
+
+  // Revenue = total of every non-cancelled booking. Active = still upcoming or
+  // currently being serviced (arrived).
+  const revenue = scoped
+    .filter((b) => b.status !== "cancelled" && b.status !== "missed")
     .reduce((sum, b) => sum + (b.total ?? 0), 0);
-  const upcomingCount = bookings.filter((b) => b.status === "upcoming").length;
+  const activeCount = scoped.filter((b) => b.status === "upcoming" || b.status === "in_progress").length;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-5 py-8 lg:px-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-black">Hi, {name}</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Manage your car washes and submit them for approval.
-          </p>
+          <h1 className="font-display text-2xl font-black">
+            {t("dashHi")}, {name}
+          </h1>
+          <p className="mt-1 text-sm text-neutral-500">{t("dashManageSub")}</p>
         </div>
         <Link href="/owner/shops/new">
           <Button>
             <Plus className="h-4 w-4" aria-hidden="true" />
-            New shop
+            {t("ownerNewShop")}
           </Button>
         </Link>
       </header>
+
+      {/* Per-shop split — only meaningful (and shown) with more than one shop. */}
+      {shops.length > 1 && (
+        <div className="mt-5">
+          <ShopScopePicker
+            shops={shops}
+            value={scope}
+            onChange={setScope}
+            allLabel={t("ownerAllShops")}
+          />
+        </div>
+      )}
 
       {/* Revenue + activity */}
       <section className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-black/5 bg-gradient-to-br from-wash-500 to-wash-600 p-5 text-white">
           <span className="flex items-center gap-1.5 text-sm text-white/90">
             <Coins className="h-4 w-4" aria-hidden="true" />
-            Revenue earned
+            {t("ownerRevenue")}
           </span>
           <p className="mt-2 font-display text-3xl font-black">{formatVnd(revenue)}</p>
         </div>
@@ -72,11 +112,11 @@ export function OwnerDashboardScreen() {
         >
           <span className="flex items-center gap-1.5 text-sm text-neutral-500">
             <CalendarClock className="h-4 w-4" aria-hidden="true" />
-            Upcoming bookings
+            {t("upcomingBookings")}
           </span>
-          <p className="mt-2 font-display text-3xl font-black text-ink">{upcomingCount}</p>
+          <p className="mt-2 font-display text-3xl font-black text-ink">{activeCount}</p>
           <span className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-wash-600">
-            View bookings →
+            {t("viewBookings")} →
           </span>
         </Link>
         <Link
@@ -85,30 +125,31 @@ export function OwnerDashboardScreen() {
         >
           <span className="flex items-center gap-1.5 text-sm text-neutral-500">
             <Store className="h-4 w-4" aria-hidden="true" />
-            Total bookings
+            {t("ownerTotalBookings")}
           </span>
-          <p className="mt-2 font-display text-3xl font-black text-ink">{bookings.length}</p>
+          <p className="mt-2 font-display text-3xl font-black text-ink">{scoped.length}</p>
         </Link>
       </section>
 
+      {/* Service utilisation + peak hours + busiest days */}
+      <OwnerAnalytics bookings={scoped} />
+
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-black uppercase tracking-wide text-neutral-500">
-          Your shops
+          {t("ownerYourShops")}
         </h2>
 
         {loading ? (
-          <p className="text-sm text-neutral-500">Loading…</p>
+          <p className="text-sm text-neutral-500">{t("loading")}</p>
         ) : shops.length === 0 ? (
           <div className="grid place-items-center rounded-2xl border border-dashed border-black/15 bg-white px-6 py-12 text-center">
             <Store className="h-8 w-8 text-neutral-300" aria-hidden="true" />
-            <p className="mt-3 text-sm font-semibold text-ink">No shops yet</p>
-            <p className="mt-1 text-sm text-neutral-500">
-              Create your first car wash to get started.
-            </p>
+            <p className="mt-3 text-sm font-semibold text-ink">{t("ownerNoShops")}</p>
+            <p className="mt-1 text-sm text-neutral-500">{t("ownerNoShopsSub")}</p>
             <Link href="/owner/shops/new" className="mt-4">
               <Button>
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                Create a shop
+                {t("ownerCreateShop")}
               </Button>
             </Link>
           </div>
@@ -129,10 +170,10 @@ export function OwnerDashboardScreen() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-ink">
-                      {shop.name || "Untitled shop"}
+                      {shop.name || t("ownerUntitledShop")}
                     </span>
                     <span className="block truncate text-xs text-neutral-500">
-                      {shop.district || shop.address || "No address yet"}
+                      {shop.district || shop.address || t("ownerNoAddress")}
                     </span>
                   </span>
                   <ShopStatusBadge status={shop.status} />
