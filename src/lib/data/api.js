@@ -16,7 +16,10 @@ export async function fetchCatalog(supabase) {
   const [shopsRes, servicesRes, plansRes] = await Promise.all([
     supabase
       .from("shops")
-      .select("*, shop_services(service_id), shop_photos(url, sort_order, is_cover)")
+      .select(
+        "*, shop_services(service_id), shop_photos(url, sort_order, is_cover), " +
+          "shop_custom_services(id, name, price, is_offer, image_url)"
+      )
       .eq("status", "approved")
       .eq("published", true),
     supabase.from("services").select("*").order("price"),
@@ -37,7 +40,7 @@ export async function fetchBookings(supabase, userId) {
   const rows = unwrap(
     await supabase
       .from("bookings")
-      .select("*, booking_services(service_id), shops(name)")
+      .select("*, booking_services(service_id, custom_service_id), shops(name)")
       .eq("user_id", userId)
       // Hide unpaid card-checkout holds — they only become real bookings once the
       // PayOS webhook confirms them (pending_payment -> upcoming).
@@ -49,7 +52,11 @@ export async function fetchBookings(supabase, userId) {
       {
         ...row,
         shop_name: row.shops?.name,
-        services: (row.booking_services ?? []).map((s) => s.service_id)
+        // Catalogue lines carry service_id; custom-service lines carry
+        // custom_service_id (the per-shop uuid). Either is a valid bookable id.
+        services: (row.booking_services ?? [])
+          .map((s) => s.service_id ?? s.custom_service_id)
+          .filter(Boolean)
       },
       formatIsoLabel(row.scheduled_date) || row.scheduled_date
     )
@@ -398,7 +405,7 @@ export async function fetchOwnerBookings(supabase, shopIds) {
   const rows = unwrap(
     await supabase
       .from("bookings")
-      .select("*, booking_services(service_id), shops(name), conversations(id)")
+      .select("*, booking_services(service_id, custom_name), shops(name), conversations(id)")
       .in("shop_id", shopIds)
       // Owners only see confirmed bookings, not unpaid card-checkout holds.
       .neq("status", "pending_payment")
@@ -410,13 +417,78 @@ export async function fetchOwnerBookings(supabase, shopIds) {
     shop: row.shops?.name ?? row.shop_id,
     date: row.scheduled_date,
     time: row.slot_time,
-    services: (row.booking_services ?? []).map((s) => s.service_id),
+    createdAt: row.created_at ?? null,
+    // Each line is a catalogue service (id, label via i18n) or a custom one
+    // (name snapshot, shown directly). { id, name } lets the UI label both.
+    services: (row.booking_services ?? []).map((s) => ({ id: s.service_id, name: s.custom_name })),
     total: row.total ?? 0,
     status: row.status ?? "upcoming",
+    // Confirmation flow: arrival/completion timestamps, the captured photos, and
+    // the plate registered at booking time vs the one scanned at completion.
+    arrivedAt: row.arrived_at ?? null,
+    completedAt: row.completed_at ?? null,
+    intakePhotoUrl: row.intake_photo_url ?? null,
+    completionPhotoUrl: row.completion_photo_url ?? null,
+    expectedPlate: row.expected_plate ?? null,
+    scannedPlate: row.scanned_plate ?? null,
+    plateVerified: Boolean(row.plate_verified),
     // The per-booking chat. [0] is safe: conversations_booking_id_key enforces at
     // most one conversation per booking. RLS-scoped to threads the owner can see.
     conversationId: row.conversations?.[0]?.id ?? null
   }));
+}
+
+// ---- Booking confirmation (owner arrival/completion + plate scan) ----------
+// Owners have SELECT-only RLS on bookings, so the writes below go through the
+// SECURITY DEFINER RPCs in 20260625090000_booking_confirmation.sql.
+
+// Upload an arrival ('intake') or completion photo to the public booking-photos
+// bucket under '<shopId>/<bookingId>/...' (storage RLS namespaces writes by shop
+// id, the first path segment). Distinct timestamped filename so captures never
+// overwrite each other. Returns the public URL.
+export async function uploadBookingPhoto(supabase, shopId, bookingId, kind, file) {
+  const ext = (file.name?.split(".").pop() || "jpg").toLowerCase();
+  const rand = Math.random().toString(36).slice(2, 8);
+  const path = `${shopId}/${bookingId}/${kind}-${Date.now()}-${rand}.${ext}`;
+  const { error } = await supabase.storage
+    .from("booking-photos")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("booking-photos").getPublicUrl(path);
+  return `${pub.publicUrl}?t=${Date.now()}`;
+}
+
+// Mark a booking arrived (car checked in) with the intake photo. Returns the
+// updated booking row.
+export async function rpcOwnerMarkArrived(supabase, bookingId, photoUrl = null, plate = null) {
+  return unwrap(
+    await supabase.rpc("owner_mark_arrived", {
+      p_booking_id: bookingId,
+      p_photo_url: photoUrl,
+      p_plate: plate
+    })
+  );
+}
+
+// Complete a booking with the completion photo + scanned plate. The RPC records
+// whether the scanned plate matches the one registered on the booking.
+export async function rpcOwnerCompleteBooking(supabase, bookingId, photoUrl = null, plate = null) {
+  return unwrap(
+    await supabase.rpc("owner_complete_booking", {
+      p_booking_id: bookingId,
+      p_photo_url: photoUrl,
+      p_plate: plate
+    })
+  );
+}
+
+// Resolve the booking's customer for the owner (name/phone/plate/car). profiles
+// RLS is self-only, so this goes through a SECURITY DEFINER RPC scoped to shops
+// the caller owns. Returns { full_name, phone, plate, car_model } | null.
+export async function fetchBookingCustomer(supabase, bookingId) {
+  return unwrap(
+    await supabase.rpc("get_booking_customer", { p_booking_id: bookingId })
+  );
 }
 
 // ---- Admin moderation ------------------------------------------------------
@@ -457,6 +529,13 @@ export async function fetchAdminShopCounts(supabase) {
     acc[r.status] = (acc[r.status] ?? 0) + 1;
     return acc;
   }, {});
+}
+
+// Completed bookings whose scanned plate didn't match the registered one.
+// Admins have no direct SELECT on bookings, so this goes through a SECURITY
+// DEFINER RPC that checks is_admin() internally.
+export async function fetchAdminPlateMismatches(supabase) {
+  return unwrap(await supabase.rpc("admin_plate_mismatches"));
 }
 
 // ---- Owner applications (admin) -------------------------------------------

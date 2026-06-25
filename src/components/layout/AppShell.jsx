@@ -5,17 +5,17 @@ import { usePathname, useRouter } from "next/navigation";
 import { TopNav } from "./TopNav.jsx";
 import { BottomNav } from "./BottomNav.jsx";
 import { useApp } from "../../lib/AppContext.jsx";
-import { isAdminCustomerMode } from "../../lib/adminPortal.js";
+import { isCustomerPortalMode } from "../../lib/adminPortal.js";
 
 // Routes that show the mobile bottom nav (mirrors the old `bottomNavByScreen`
 // map). Detail / booking / confirmation / explore / plans render their own
 // footer or are desktop-only, so they show no bottom nav.
 const BOTTOM_NAV_ROUTES = new Set(["/", "/bookings", "/chat", "/rewards", "/vouchers", "/account"]);
 
-// Role homes: admins are auto-routed into /admin. Owners are NOT force-routed —
-// they're ordinary customers with an extra owner area they opt into from their
-// profile (the "Owner mode" toggle), so they stay in the customer app by default.
-const ROLE_HOME = { admin: "/admin" };
+// Role homes: owners/admins are auto-routed into their own section so they land
+// on their dashboard/console first. Either can opt into the customer portal (see
+// adminPortal.js) to browse the customer app without being bounced back.
+const ROLE_HOME = { admin: "/admin", owner: "/owner" };
 
 function isRoleExempt(pathname, home) {
   return (
@@ -40,9 +40,9 @@ export function AppShell({ children }) {
     if (auth.loading) return;
     const role = auth.profile?.role;
     const home = ROLE_HOME[role];
-    // Admins can opt into the customer portal (see adminPortal.js) — don't bounce
-    // them back to /admin while that session preference is on.
-    if (role === "admin" && isAdminCustomerMode()) return;
+    // Owners/admins can opt into the customer portal (see adminPortal.js) — don't
+    // bounce them back to their section while that session preference is on.
+    if (home && isCustomerPortalMode()) return;
     if (home && !isRoleExempt(pathname, home)) {
       router.replace(home);
     }

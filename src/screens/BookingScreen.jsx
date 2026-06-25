@@ -199,9 +199,18 @@ export function BookingScreen({ shopId }) {
   const ownServices = (shop.services ?? [])
     .map((id) => allServices.find((s) => s.id === id))
     .filter(Boolean);
-  const bookableServices = ownServices.length
+  const baseServices = ownServices.length
     ? ownServices
     : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id));
+  // The shop's own custom services are always bookable, priced from their row.
+  // `name` (vs an i18n id) marks them for label resolution below.
+  const customServices = (shop.customServices ?? []).map((c) => ({
+    id: c.id,
+    price: c.price,
+    name: c.name,
+    icon: "Sparkles"
+  }));
+  const bookableServices = [...baseServices, ...customServices];
   // Only price/book selections this shop actually offers — a stale global pick
   // from another shop shouldn't carry over here.
   const effectiveSelected = state.selectedServices.filter((id) =>
@@ -255,16 +264,19 @@ export function BookingScreen({ shopId }) {
     }
   };
 
-  const selectedServices = getSelectedServices(effectiveSelected);
-  const subtotal = getSubtotal(effectiveSelected);
-  const discount = getDiscount(state.selectedPlan, effectiveSelected);
-  const total = getTotal(state.selectedPlan, effectiveSelected);
+  const selectedServices = getSelectedServices(effectiveSelected, bookableServices);
+  const subtotal = getSubtotal(effectiveSelected, bookableServices);
+  const discount = getDiscount(state.selectedPlan, effectiveSelected, bookableServices);
+  const total = getTotal(state.selectedPlan, effectiveSelected, bookableServices);
 
   // A pending free-wash voucher makes the booking free; otherwise the wallet
   // must cover the total (after any membership + promo-code discount).
-  const redeeming = Boolean(state.pendingVoucher && state.voucher);
+  const hasStandardWash = effectiveSelected.includes("exterior");
+  const redeeming = Boolean(state.pendingVoucher && state.voucher && hasStandardWash);
+  // The free wash covers only the standard car wash; any extra services are charged.
+  const freeWashAmount = redeeming ? (selectedServices.find((s) => s.id === "exterior")?.price ?? 0) : 0;
   const couponDiscount = redeeming ? 0 : getCouponDiscount(promo, subtotal, discount);
-  const charge = redeeming ? 0 : Math.max(0, total - couponDiscount);
+  const charge = Math.max(0, total - couponDiscount - freeWashAmount);
   const insufficient = charge > state.funds;
   // Exact amount the wallet is short by, for the top-up affordance (item 7).
   const shortfall = Math.max(0, charge - state.funds);
@@ -407,7 +419,7 @@ export function BookingScreen({ shopId }) {
                     <Icon name="Check" className="absolute right-2 top-2 h-4 w-4" />
                   ) : null}
                   <Icon name={service.icon} className="h-7 w-7" />
-                  <strong className="text-sm leading-tight">{t(service.id)}</strong>
+                  <strong className="text-sm leading-tight">{service.name ?? t(service.id)}</strong>
                   <span className={`text-xs ${selected ? "text-white/90" : "text-neutral-500"}`}>
                     {formatVnd(service.price)} · {selected ? t("selected") : t("add")}
                   </span>
@@ -435,7 +447,7 @@ export function BookingScreen({ shopId }) {
                 <span className="font-normal text-neutral-400">({shop.reviews})</span>
               </span>
             ) : null}
-            <p className="mt-1 text-xs text-neutral-600">{selectedServices.map((service) => t(service.id)).join(" · ")}</p>
+            <p className="mt-1 text-xs text-neutral-600">{selectedServices.map((service) => service.name ?? t(service.id)).join(" · ")}</p>
             <strong className="mt-1 block">{formatVnd(subtotal)}</strong>
           </div>
         </section>
@@ -475,7 +487,7 @@ export function BookingScreen({ shopId }) {
           <div className="mt-3 grid gap-2 text-sm">
             {selectedServices.map((service) => (
               <div key={service.id} className="flex justify-between">
-                <span>{t(service.id)}</span>
+                <span>{service.name ?? t(service.id)}</span>
                 <strong>{formatVnd(service.price)}</strong>
               </div>
             ))}
@@ -498,7 +510,7 @@ export function BookingScreen({ shopId }) {
             {redeeming ? (
               <div className="flex justify-between text-lime-700">
                 <span>{t("freeWashApplied")}</span>
-                <strong>-{formatVnd(total)}</strong>
+                <strong>-{formatVnd(freeWashAmount)}</strong>
               </div>
             ) : null}
             <div className="flex justify-between border-t border-black/10 pt-2 text-lg font-black">

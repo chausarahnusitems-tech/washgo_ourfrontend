@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BadgeCheck, ClipboardCheck, Flag, LayoutDashboard, LogOut, MessageCircle, ShieldCheck, Star, Store } from "lucide-react";
+import { ArrowLeft, BadgeCheck, ClipboardCheck, Flag, LayoutDashboard, LogOut, MessageCircle, ScanLine, ShieldCheck, Star, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
 import { enterCustomerPortal } from "../../lib/adminPortal.js";
+import { useNavBadges } from "../../lib/useNavBadges.js";
 
 // Admin-area navigation. Left sidebar on desktop, sticky top bar on mobile —
 // same shape as OwnerNav but for the moderation console.
@@ -16,7 +17,8 @@ const NAV_ITEMS = [
   { key: "claims", label: "Applications", href: "/admin/claims", icon: BadgeCheck },
   { key: "messages", label: "Messages", href: "/admin/messages", icon: MessageCircle },
   { key: "reviews", label: "Reviews", href: "/admin/reviews", icon: Star },
-  { key: "reports", label: "Reports", href: "/admin/reports", icon: Flag }
+  { key: "reports", label: "Reports", href: "/admin/reports", icon: Flag },
+  { key: "plates", label: "Plate checks", href: "/admin/plates", icon: ScanLine }
 ];
 
 function isActive(pathname, href) {
@@ -28,10 +30,12 @@ export function AdminNav() {
   const { auth, signOut } = useApp();
   const pathname = usePathname();
   const router = useRouter();
+  const badges = useNavBadges();
   const name = auth.profile?.full_name || auth.user?.email || "Admin";
 
   const links = NAV_ITEMS.map(({ key, label, href, icon: LucideIcon }) => {
     const active = isActive(pathname, href);
+    const badge = badges[key] ?? 0;
     return (
       <Link
         key={key}
@@ -44,6 +48,11 @@ export function AdminNav() {
       >
         <LucideIcon className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
         <span>{label}</span>
+        {badge > 0 && (
+          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-wash-500 px-1.5 text-[0.65rem] font-black text-white">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
       </Link>
     );
   });
@@ -103,18 +112,24 @@ export function AdminNav() {
         <nav aria-label="Admin navigation" className="ml-auto flex items-center gap-1">
           {NAV_ITEMS.map(({ key, label, href, icon: LucideIcon }) => {
             const active = isActive(pathname, href);
+            const badge = badges[key] ?? 0;
             return (
               <Link
                 key={key}
                 href={href}
-                aria-label={label}
+                aria-label={badge > 0 ? `${label} (${badge} new)` : label}
                 aria-current={active ? "page" : undefined}
                 className={cx(
-                  "grid h-10 w-10 place-items-center rounded-full transition",
+                  "relative grid h-10 w-10 place-items-center rounded-full transition",
                   active ? "bg-ink/5 text-ink" : "text-neutral-500 hover:bg-neutral-100"
                 )}
               >
                 <LucideIcon className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                {badge > 0 && (
+                  <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-wash-500 px-1 text-[0.55rem] font-black text-white">
+                    {badge > 9 ? "9+" : badge}
+                  </span>
+                )}
               </Link>
             );
           })}

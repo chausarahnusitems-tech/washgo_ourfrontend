@@ -4,8 +4,10 @@ import { Icon } from "../../components/ui/Icon.jsx";
 
 const statusTones = {
   upcoming: "bg-wash-50 text-wash-600",
+  in_progress: "bg-amber-50 text-amber-600",
   completed: "bg-emerald-50 text-emerald-600",
-  cancelled: "bg-neutral-100 text-neutral-500"
+  cancelled: "bg-neutral-100 text-neutral-500",
+  missed: "bg-red-50 text-red-600"
 };
 
 // Renders a booking summary. Pass `onClick` to make the whole card a button that
@@ -15,8 +17,10 @@ export function BookingCard({ booking, shop, t, onClick }) {
   const status = getBookingStatus(booking);
   const statusLabel = {
     upcoming: t("statusUpcoming"),
+    in_progress: t("statusInProgress"),
     completed: t("statusCompleted"),
-    cancelled: t("statusCancelled")
+    cancelled: t("statusCancelled"),
+    missed: t("statusMissed")
   }[status];
 
   const className = `grid w-full grid-cols-[84px_1fr_auto] items-center gap-3 rounded-xl border border-black/20 bg-white p-3 text-left ${

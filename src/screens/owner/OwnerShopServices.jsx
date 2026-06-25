@@ -173,8 +173,9 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
           Your own services
         </h3>
         <p className="mt-1 mb-3 text-sm text-neutral-500">
-          Pick from the common menu to pre-fill the name and a suggested price, or add your own.
-          Flag any that are special offers.
+          Add services unique to your shop — customers can book these alongside the
+          catalogue ones. Pick from the common menu to pre-fill the name and a suggested
+          price, or add your own. Flag any that are special offers.
         </p>
 
         {custom.length > 0 && (

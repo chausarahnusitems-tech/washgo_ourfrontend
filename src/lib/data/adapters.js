@@ -90,6 +90,15 @@ export function adaptShop(row, origin = userLocation) {
     starting: row.starting_price ?? 0,
     wait: row.wait_minutes != null ? `${row.wait_minutes} min` : "",
     services: row.services ?? [],
+    // Per-shop custom (owner-defined) services — bookable alongside the catalogue
+    // ones. Keyed by uuid id; name is shown directly (not via i18n).
+    customServices: (row.shop_custom_services ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      price: c.price ?? 0,
+      imageUrl: c.image_url ?? null,
+      isOffer: Boolean(c.is_offer)
+    })),
     imagePosition: row.image_position ?? "object-center",
     open: row.is_open ?? true,
     // null (not "") so the cards' `shop.hours ?? t("hours")` fallback fires for a

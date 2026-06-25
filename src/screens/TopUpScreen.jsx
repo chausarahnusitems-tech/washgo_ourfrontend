@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
-import { startCheckout } from "../lib/data/billing.js";
+import { devAddFunds, startCheckout } from "../lib/data/billing.js";
 import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
@@ -18,9 +18,10 @@ const presets = [50000, 100000, 200000, 500000, 1000000, 2000000];
 export function TopUpScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t, state, requireAuth, mode, topUpFunds } = useApp();
+  const { t, state, requireAuth, mode, topUpFunds, refreshAccount } = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [devBusy, setDevBusy] = useState(false);
   // A booking that can't be afforded passes ?amount=<shortfall> so the user lands
   // on the exact top-up they need pre-filled (item 7).
   const presetAmount = Math.round(Number(searchParams.get("amount")) || 0);
@@ -76,6 +77,29 @@ export function TopUpScreen() {
           : "Couldn't start the payment. Please try again."
       );
     }
+  };
+
+  // Dev-only wallet unlock (see DEV_WALLET_UNLOCK). The button only renders on a
+  // non-production build with the public flag set; the actual crediting is gated
+  // AGAIN on the server (NODE_ENV + DEV_WALLET_UNLOCK + service-role-only RPC), so
+  // it is never reachable in production and never exploitable by a customer.
+  const devUnlocked =
+    process.env.NEXT_PUBLIC_DEV_WALLET_UNLOCK === "true" &&
+    process.env.NODE_ENV !== "production" &&
+    mode === "backend";
+
+  const onDevAdd = async () => {
+    if (devBusy) return;
+    if (requireAuth) {
+      router.push("/login");
+      return;
+    }
+    setDevBusy(true);
+    setError("");
+    const result = await devAddFunds();
+    if (result.error) setError(`Dev top-up unavailable (${result.error}).`);
+    else await refreshAccount();
+    setDevBusy(false);
   };
 
   return (
@@ -158,6 +182,16 @@ export function TopUpScreen() {
             <Icon name="Plus" className="h-5 w-5" />
             {busy ? "…" : `${t("addFunds")} ${valid ? formatVnd(amount) : ""}`}
           </Button>
+          {devUnlocked && (
+            <button
+              type="button"
+              onClick={onDevAdd}
+              disabled={devBusy}
+              className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-dashed border-amber-400 bg-amber-50 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+            >
+              🔧 {devBusy ? "Adding…" : `Dev: add ${formatVnd(1000000000)}`}
+            </button>
+          )}
         </div>
       </footer>
     </div>

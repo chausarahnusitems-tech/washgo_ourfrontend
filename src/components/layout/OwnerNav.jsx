@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, CalendarClock, LayoutDashboard, LogOut, MessageCircle, Star, Store } from "lucide-react";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
+import { enterCustomerPortal } from "../../lib/adminPortal.js";
+import { useNavBadges } from "../../lib/useNavBadges.js";
 
 // Owner-area navigation. Renders a left sidebar on desktop and a sticky top bar
 // on mobile (the owner layout arranges them via flex). Deliberately separate
@@ -25,11 +27,14 @@ function isActive(pathname, href) {
 
 export function OwnerNav() {
   const { auth, signOut } = useApp();
+  const router = useRouter();
   const pathname = usePathname();
+  const badges = useNavBadges();
   const name = auth.profile?.full_name || auth.user?.email || "Owner";
 
   const links = NAV_ITEMS.map(({ key, label, href, icon: LucideIcon }) => {
     const active = isActive(pathname, href);
+    const badge = badges[key] ?? 0;
     return (
       <Link
         key={key}
@@ -42,6 +47,11 @@ export function OwnerNav() {
       >
         <LucideIcon className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
         <span>{label}</span>
+        {badge > 0 && (
+          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-wash-500 px-1.5 text-[0.65rem] font-black text-white">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
       </Link>
     );
   });
@@ -63,13 +73,14 @@ export function OwnerNav() {
 
         <div className="mt-auto flex flex-col gap-1 border-t border-black/10 pt-3">
           <p className="truncate px-3 text-xs font-semibold text-neutral-500">{name}</p>
-          <Link
-            href="/"
-            className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-neutral-600 transition hover:bg-neutral-100"
+          <button
+            type="button"
+            onClick={() => enterCustomerPortal(router)}
+            className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold text-neutral-600 transition hover:bg-neutral-100"
           >
             <ArrowLeft className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
             Customer app
-          </Link>
+          </button>
           <button
             type="button"
             onClick={signOut}
@@ -92,18 +103,24 @@ export function OwnerNav() {
         <nav aria-label="Owner navigation" className="ml-auto flex items-center gap-1 overflow-x-auto">
           {NAV_ITEMS.map(({ key, label, href, icon: LucideIcon }) => {
             const active = isActive(pathname, href);
+            const badge = badges[key] ?? 0;
             return (
               <Link
                 key={key}
                 href={href}
-                aria-label={label}
+                aria-label={badge > 0 ? `${label} (${badge} new)` : label}
                 aria-current={active ? "page" : undefined}
                 className={cx(
-                  "grid h-10 w-10 place-items-center rounded-full transition",
+                  "relative grid h-10 w-10 place-items-center rounded-full transition",
                   active ? "bg-wash-50 text-wash-600" : "text-neutral-500 hover:bg-neutral-100"
                 )}
               >
                 <LucideIcon className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+                {badge > 0 && (
+                  <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-wash-500 px-1 text-[0.55rem] font-black text-white">
+                    {badge > 9 ? "9+" : badge}
+                  </span>
+                )}
               </Link>
             );
           })}
