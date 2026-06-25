@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
@@ -8,6 +8,7 @@ import { formatVnd } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { createClient } from "../lib/supabase/client.js";
 import { openConversation } from "../lib/data/api.js";
+import { computeHoursModel } from "../lib/hours.js";
 import { Icon } from "./ui/Icon.jsx";
 import { Button, IconButton } from "./ui/Button.jsx";
 import { cx } from "../lib/cx.js";
@@ -31,6 +32,153 @@ function ServiceChips({ shop, t }) {
   );
 }
 
+// One circular icon + label in the action row under the photo (navigate / message
+// / share / save). Renders an <a> for tel: links and a <button> otherwise.
+function QuickAction({ icon, label, onClick, href, primary = false, active }) {
+  const body = (
+    <>
+      <span
+        className={cx(
+          "grid h-12 w-12 place-items-center rounded-full transition",
+          primary
+            ? "bg-wash-500 text-white group-hover:bg-wash-600"
+            : "bg-wash-50 text-wash-600 group-hover:bg-wash-100"
+        )}
+      >
+        <Icon name={icon} className={cx("h-5 w-5", active && "fill-current")} />
+      </span>
+      <span className="text-[0.72rem] font-bold leading-tight text-neutral-600">{label}</span>
+    </>
+  );
+  const className = "group flex flex-1 flex-col items-center gap-1.5 text-center";
+  return href ? (
+    <a href={href} aria-label={label} className={className}>
+      {body}
+    </a>
+  ) : (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={typeof active === "boolean" ? active : undefined}
+      className={className}
+    >
+      {body}
+    </button>
+  );
+}
+
+// A readable info row (address / price). When `copyText` is given the whole row
+// becomes a button that copies it, flashing a green "Copied" confirmation (and
+// announcing it to screen readers). Rows without `copyText` are plain text.
+function DetailRow({ icon, children, copyText, t, isMobile }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard?.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  };
+
+  const inner = (
+    <>
+      <Icon name={icon} className="mt-0.5 h-[18px] w-[18px] shrink-0 text-neutral-400" />
+      <span className="min-w-0 flex-1 text-sm text-neutral-700">{children}</span>
+      {copyText ? (
+        <Icon
+          name={copied ? "Check" : "Copy"}
+          className={cx(
+            "-my-0.5 h-4 w-4 shrink-0 transition",
+            copied
+              ? "text-ink"
+              : cx("text-neutral-400", isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")
+          )}
+        />
+      ) : null}
+    </>
+  );
+
+  if (!copyText) {
+    return <div className="flex items-start gap-3 rounded-xl px-2 py-2">{inner}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      aria-label={copied ? t("copied") : `${t("copy")}: ${copyText}`}
+      className="group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-neutral-50"
+    >
+      {inner}
+      {/* Announce the copy to assistive tech without disturbing the visible layout. */}
+      <span aria-live="polite" className="sr-only">
+        {copied ? t("copied") : ""}
+      </span>
+    </button>
+  );
+}
+
+// The expandable opening-hours row: collapsed it shows the current state and the
+// nearest transition ("Open · Closes 22:00" / "Closed · Opens Mon 08:00");
+// expanded it lists the whole week. Falls back to the raw `hours` string when no
+// structured hours are available.
+function HoursRow({ shop, model, t }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!model?.known) {
+    return (
+      <div className="flex items-start gap-3 rounded-xl px-2 py-2">
+        <Icon name="Clock" className="mt-0.5 h-[18px] w-[18px] shrink-0 text-neutral-400" />
+        <span className="min-w-0 flex-1 text-sm">
+          <span className={cx("font-bold", shop.open ? "text-emerald-600" : "text-rose-600")}>
+            {shop.open ? t("open") : t("closed")}
+          </span>
+          <span className="text-neutral-500"> · {shop.hours ?? t("hours")}</span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-label={t("openingHours")}
+        className="group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-neutral-50"
+      >
+        <Icon name="Clock" className="mt-0.5 h-[18px] w-[18px] shrink-0 text-neutral-400" />
+        <span className="min-w-0 flex-1 text-sm">
+          <span className={cx("font-bold", model.isOpen ? "text-emerald-600" : "text-rose-600")}>
+            {model.isOpen ? t("open") : t("closed")}
+          </span>
+          {model.detail ? <span className="text-neutral-500"> · {model.detail}</span> : null}
+        </span>
+        <Icon
+          name="ChevronDown"
+          className={cx("mt-0.5 h-4 w-4 shrink-0 text-neutral-400 transition-transform", expanded && "rotate-180")}
+        />
+      </button>
+      {expanded ? (
+        <dl className="grid gap-1.5 px-2 pb-2 pl-9 pt-1 text-sm">
+          {model.week.map((day) => (
+            <div key={day.idx} className="flex items-center justify-between gap-4">
+              <dt className={cx(day.isToday ? "font-bold text-ink" : "text-neutral-500")}>{day.label}</dt>
+              <dd className={cx(day.isToday && "font-bold", day.closed ? "text-rose-500" : "text-neutral-700")}>
+                {day.text}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The car-wash detail card shown on the map page. On desktop it floats next to
  * the sidebar list; on mobile it fills the bottom sheet. `onBack` (mobile)
@@ -40,7 +188,22 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
   const router = useRouter();
   const { state, toggleFavorite, requireAuth, mode } = useApp();
   const [copied, setCopied] = useState(false);
+  // One timestamp per card open (the card is keyed by shop.id, so it remounts on
+  // selection) — drives the "open now / closes at" computation. The card only
+  // mounts on user selection (client-side), so there's no SSR/hydration concern.
+  const [now] = useState(() => new Date());
+  const hoursModel = useMemo(() => (shop ? computeHoursModel(shop, now, t) : null), [shop, now, t]);
   if (!shop) return null;
+
+  const isMobile = variant === "mobile";
+  // Imported, info-only listing (business hasn't partnered with Washgo yet): no
+  // booking / payment, just contact details. See migration 0020.
+  const isDirectory = shop.listingType === "directory";
+  const isFav = (state.favorites ?? []).includes(shop.id);
+  const addressText = shop.district ? `${shop.district} · ${shop.address}` : shop.address;
+  // Open/closed for the header badge — the schedule-derived state when we can parse
+  // hours, otherwise the shop's stored flag. Kept in sync with the hours row below.
+  const isOpen = hoursModel?.known ? hoursModel.isOpen : shop.open;
 
   // Open (or resume) a chat thread with this shop's owner.
   const onMessageShop = async () => {
@@ -57,10 +220,6 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
     }
   };
 
-  // Imported, info-only listing (business hasn't partnered with Washgo yet): no
-  // booking / payment, just contact details. See migration 0020.
-  const isDirectory = shop.listingType === "directory";
-
   // "Own this business?" — go to the verification form where the owner submits
   // services, hours and a location photo for admin review (see ClaimListingScreen).
   const onClaim = () => {
@@ -71,15 +230,22 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
     router.push(`/claim/${shop.id}`);
   };
 
-  const isMobile = variant === "mobile";
-  const isFav = (state.favorites ?? []).includes(shop.id);
-
   const onToggleFav = () => {
     if (requireAuth) {
       router.push("/login");
       return;
     }
     toggleFavorite(shop.id);
+  };
+
+  // Hand off to the device's maps app for turn-by-turn directions. Prefer the
+  // precise lat/lng pin; fall back to a text address query.
+  const onDirections = () => {
+    const dest =
+      shop.lat != null && shop.lng != null
+        ? `${shop.lat},${shop.lng}`
+        : encodeURIComponent([shop.name, shop.address].filter(Boolean).join(", "));
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}`, "_blank", "noopener,noreferrer");
   };
 
   // Share via the Web Share API where available, falling back to copying the
@@ -114,94 +280,51 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
       )}
     >
       <div className={cx("min-h-0 flex-1 overflow-y-auto", isMobile ? "px-5 pb-4 pt-4" : "p-5")}>
+        {/* Header: name + rating/price summary (close/back lives top-right). */}
         <div className="flex items-start justify-between gap-3">
-          <h1 className="min-w-0 font-display text-2xl font-black leading-tight">{shop.name}</h1>
-          <div className="flex shrink-0 gap-2">
-            <IconButton label={t("share")} onClick={onShare} className="h-9 w-9 bg-neutral-100">
-              <Icon name="Share2" className="h-5 w-5" />
-            </IconButton>
-            <IconButton
-              label={isFav ? t("saved") : t("save")}
-              aria-pressed={isFav}
-              onClick={onToggleFav}
-              className="h-9 w-9 bg-neutral-100"
-            >
-              <Icon name="Heart" className={cx("h-5 w-5", isFav && "fill-wash-500 text-wash-500")} />
-            </IconButton>
-            <IconButton
-              label={t("close")}
-              onClick={isMobile ? onBack : onClose}
-              className="h-9 w-9 bg-neutral-100"
-            >
-              <Icon name={isMobile ? "ArrowLeft" : "X"} className="h-5 w-5" />
-            </IconButton>
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-black leading-tight">{shop.name}</h1>
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
+              <span className="inline-flex items-center gap-1 font-bold text-ink">
+                <Icon name="Star" className="h-4 w-4 fill-amber-400 text-amber-400" />
+                {shop.rating}
+              </span>
+              <span className="text-neutral-500">({shop.reviews})</span>
+              {isDirectory ? null : (
+                <>
+                  <span className="text-neutral-300">·</span>
+                  <span className="font-semibold text-neutral-600">
+                    {t("from")} {formatVnd(shop.starting)}
+                  </span>
+                </>
+              )}
+            </p>
+            {/* Open/closed (state only) + distance, directly under the rating. */}
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm">
+              <span className={cx("font-bold", isOpen ? "text-emerald-600" : "text-rose-600")}>
+                {isOpen ? t("open") : t("closed")}
+              </span>
+              {shop.distance ? (
+                <>
+                  <span className="text-neutral-300">·</span>
+                  <span className="text-neutral-500">{shop.distance}</span>
+                </>
+              ) : null}
+            </p>
           </div>
+          <IconButton
+            label={t("close")}
+            onClick={isMobile ? onBack : onClose}
+            className="h-9 w-9 bg-neutral-100"
+          >
+            <Icon name={isMobile ? "ArrowLeft" : "X"} className="h-5 w-5" />
+          </IconButton>
         </div>
 
         {/* aria-live so the clipboard fallback is announced to screen readers */}
-        <p aria-live="polite" className={cx("text-xs font-bold text-wash-500", !copied && "sr-only")}>
+        <p aria-live="polite" className={cx("mt-1 text-xs font-bold text-wash-500", !copied && "sr-only")}>
           {copied ? t("linkCopied") : ""}
         </p>
-
-        <p className="mt-1 text-sm text-neutral-600">
-          <span
-            className={cx(
-              "mr-1 rounded px-1 text-[0.62rem] font-black text-white",
-              shop.open ? "bg-emerald-500" : "bg-neutral-400"
-            )}
-          >
-            {shop.open ? t("open") : t("closed")}
-          </span>
-          {shop.hours ?? t("hours")} <span className="text-neutral-400">·</span> {shop.distance}
-        </p>
-        <p className="mt-1 flex items-start gap-2 text-sm text-neutral-600">
-          <Icon name="MapPin" className="mt-0.5 h-4 w-4 shrink-0" />
-          {shop.district ? `${shop.district} · ${shop.address}` : shop.address}
-        </p>
-
-        {/* Hand off to the device's maps app for turn-by-turn directions. Prefer
-            the precise lat/lng pin; fall back to a text address query. */}
-        <button
-          type="button"
-          onClick={() => {
-            const dest =
-              shop.lat != null && shop.lng != null
-                ? `${shop.lat},${shop.lng}`
-                : encodeURIComponent([shop.name, shop.address].filter(Boolean).join(", "));
-            window.open(
-              `https://www.google.com/maps/dir/?api=1&destination=${dest}`,
-              "_blank",
-              "noopener,noreferrer"
-            );
-          }}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-wash-50 px-3 py-1.5 text-sm font-bold text-wash-600 transition hover:bg-wash-100"
-        >
-          <Icon name="LocateFixed" className="h-4 w-4" />
-          {t("getDirections")}
-        </button>
-
-        {/* Directory listings aren't bookable, so the primary action is a direct
-            phone call to the shop. Hidden when no number is on record. */}
-        {isDirectory && shop.phone ? (
-          <a
-            href={`tel:${shop.phone.replace(/\s+/g, "")}`}
-            className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
-          >
-            <Icon name="Phone" className="h-4 w-4" />
-            {t("callShop")}
-          </a>
-        ) : null}
-
-        {mode === "backend" && shop.ownerId ? (
-          <button
-            type="button"
-            onClick={onMessageShop}
-            className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1.5 text-sm font-bold text-ink transition hover:bg-neutral-200"
-          >
-            <Icon name="MessageCircle" className="h-4 w-4" />
-            {t("messageShop")}
-          </button>
-        ) : null}
 
         {/* Owner-uploaded gallery: a scroll-snap row when there's more than one
             photo, otherwise the single cover. Falls back to the hero image. */}
@@ -231,26 +354,36 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           />
         )}
 
-        {/* Rating and minimum pricing, surfaced right below the photo. */}
-        <dl className={cx("mt-3 grid gap-2 text-sm", isDirectory ? "grid-cols-1" : "grid-cols-2")}>
-          <div className="rounded-xl bg-neutral-100 px-3 py-2">
-            <dt className="text-[0.7rem] text-neutral-500">{t("recommended")}</dt>
-            <dd className="flex items-center gap-1 font-bold text-wash-500">
-              <Icon name="Star" className="h-3.5 w-3.5" />
-              {shop.rating} ({shop.reviews})
-            </dd>
-          </div>
-          {/* Directory listings have no Washgo pricing — only show the rating. */}
+        {/* Quick actions (navigate / message / call / share / save). */}
+        <div className="mt-4 flex items-start justify-around gap-1">
+          <QuickAction icon="LocateFixed" label={t("directions")} onClick={onDirections} primary />
+          {mode === "backend" && shop.ownerId ? (
+            <QuickAction icon="MessageCircle" label={t("message")} onClick={onMessageShop} />
+          ) : null}
+          {shop.phone ? (
+            <QuickAction
+              icon="Phone"
+              label={t("callShop")}
+              href={`tel:${shop.phone.replace(/\s+/g, "")}`}
+            />
+          ) : null}
+          <QuickAction icon="Share2" label={t("share")} onClick={onShare} />
+          <QuickAction icon="Heart" label={isFav ? t("saved") : t("save")} onClick={onToggleFav} active={isFav} />
+        </div>
+
+        {/* Readable details: address, starting price, opening hours. */}
+        <div className="mt-4 grid gap-0.5 border-t border-black/5 pt-3">
+          <DetailRow icon="MapPin" copyText={addressText} t={t} isMobile={isMobile}>
+            {addressText}
+          </DetailRow>
           {isDirectory ? null : (
-            <div className="rounded-xl bg-neutral-100 px-3 py-2">
-              <dt className="text-[0.7rem] text-neutral-500">{t("startingAt")}</dt>
-              <dd className="flex items-center gap-1 font-bold text-wash-500">
-                <Icon name="Star" className="h-3.5 w-3.5" />
-                {formatVnd(shop.starting)}
-              </dd>
-            </div>
+            <DetailRow icon="Coins" t={t} isMobile={isMobile}>
+              <span className="text-neutral-500">{t("from")} </span>
+              <span className="font-semibold text-ink">{formatVnd(shop.starting)}</span>
+            </DetailRow>
           )}
-        </dl>
+          <HoursRow shop={shop} model={hoursModel} t={t} />
+        </div>
 
         {/* Promo video info card — paid feature, only present when ACTIVE. */}
         {shop.promoVideoUrl ? (
@@ -277,19 +410,18 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           ) : null
         ) : (
           <>
-            <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("serviceIncluded")}</h2>
-            <div className="mt-2">
-              <ServiceChips shop={shop} t={t} />
-            </div>
             {shop.notes ? (
               <>
                 <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("aboutShop")}</h2>
                 <p className="mt-2 text-sm text-neutral-600">{shop.notes}</p>
               </>
             ) : null}
+            <h2 className="mt-4 font-display text-sm font-black text-neutral-600">{t("serviceIncluded")}</h2>
+            <div className="mt-2">
+              <ServiceChips shop={shop} t={t} />
+            </div>
           </>
         )}
-
       </div>
 
       {isDirectory ? (
@@ -311,9 +443,7 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
       ) : (
         <div className="flex items-center justify-between gap-4 border-t border-black/10 px-5 py-4">
           <div>
-            <strong className="block text-2xl font-black leading-none">
-              {formatVnd(shop.starting)}
-            </strong>
+            <strong className="block text-2xl font-black leading-none">{formatVnd(shop.starting)}</strong>
             <span className="text-xs text-neutral-500">{t("startingAt")}</span>
           </div>
           <Button onClick={() => onBook?.(shop.id)} className="px-8">
