@@ -39,7 +39,6 @@ function ServiceChips({ shop, t }) {
 export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "desktop", className }) {
   const router = useRouter();
   const { state, toggleFavorite, requireAuth, mode } = useApp();
-  const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   if (!shop) return null;
 
@@ -232,6 +231,27 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           />
         )}
 
+        {/* Rating and minimum pricing, surfaced right below the photo. */}
+        <dl className={cx("mt-3 grid gap-2 text-sm", isDirectory ? "grid-cols-1" : "grid-cols-2")}>
+          <div className="rounded-xl bg-neutral-100 px-3 py-2">
+            <dt className="text-[0.7rem] text-neutral-500">{t("recommended")}</dt>
+            <dd className="flex items-center gap-1 font-bold text-wash-500">
+              <Icon name="Star" className="h-3.5 w-3.5" />
+              {shop.rating} ({shop.reviews})
+            </dd>
+          </div>
+          {/* Directory listings have no Washgo pricing — only show the rating. */}
+          {isDirectory ? null : (
+            <div className="rounded-xl bg-neutral-100 px-3 py-2">
+              <dt className="text-[0.7rem] text-neutral-500">{t("startingAt")}</dt>
+              <dd className="flex items-center gap-1 font-bold text-wash-500">
+                <Icon name="Star" className="h-3.5 w-3.5" />
+                {formatVnd(shop.starting)}
+              </dd>
+            </div>
+          )}
+        </dl>
+
         {/* Promo video info card — paid feature, only present when ACTIVE. */}
         {shop.promoVideoUrl ? (
           <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-neutral-50">
@@ -270,36 +290,6 @@ export function ShopDetailCard({ shop, t, onClose, onBack, onBook, variant = "de
           </>
         )}
 
-        {expanded ? (
-          <dl className={cx("mt-3 grid gap-2 text-sm", isDirectory ? "grid-cols-1" : "grid-cols-2")}>
-            <div className="rounded-xl bg-neutral-100 px-3 py-2">
-              <dt className="text-[0.7rem] text-neutral-500">{t("recommended")}</dt>
-              <dd className="flex items-center gap-1 font-bold text-wash-500">
-                <Icon name="Star" className="h-3.5 w-3.5" />
-                {shop.rating} ({shop.reviews})
-              </dd>
-            </div>
-            {/* Directory listings have no Washgo pricing — only show the rating. */}
-            {isDirectory ? null : (
-              <div className="rounded-xl bg-neutral-100 px-3 py-2">
-                <dt className="text-[0.7rem] text-neutral-500">{t("startingAt")}</dt>
-                <dd className="flex items-center gap-1 font-bold text-wash-500">
-                  <Icon name="Star" className="h-3.5 w-3.5" />
-                  {formatVnd(shop.starting)}
-                </dd>
-              </div>
-            )}
-          </dl>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="mx-auto mt-3 flex items-center gap-1 bg-transparent p-0 font-black text-wash-500"
-        >
-          {t("showMore")}
-          <Icon name="ChevronDown" className={cx("h-4 w-4 transition", expanded && "rotate-180")} />
-        </button>
       </div>
 
       {isDirectory ? (
