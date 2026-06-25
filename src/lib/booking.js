@@ -82,7 +82,8 @@ export const initialState = {
   // Applied promo/referral coupon at checkout ({ code, percent, amountOff }) or null.
   promo: null,
   vehicle: {
-    model: "BMW 1234",
+    brand: "BMW",
+    model: "BMW 3 Series",
     plate: "51G-248.19",
     notes: ""
   }

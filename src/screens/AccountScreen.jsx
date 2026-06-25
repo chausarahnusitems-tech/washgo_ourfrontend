@@ -11,6 +11,9 @@ import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { RewardsCard } from "../components/RewardsCard.jsx";
 import { VoucherAccess } from "./shared/VoucherAccess.jsx";
+import { BrandLogo } from "../components/vehicle/BrandLogo.jsx";
+import { VehicleEditModal } from "../components/vehicle/VehicleEditModal.jsx";
+import { brandFromModel } from "../data/carBrands.js";
 
 // "Jun 2026" style join date from an ISO timestamp.
 function formatJoined(iso) {
@@ -268,6 +271,39 @@ function SettingsCard() {
   );
 }
 
+// "My Vehicle" card with the brand logo, model and plate, plus an Edit button
+// that opens the pop-up vehicle editor. The brand is derived from the stored
+// model when it wasn't saved explicitly (legacy data).
+function VehicleCard() {
+  const { t, state } = useApp();
+  const [open, setOpen] = useState(false);
+  const vehicle = state.vehicle ?? {};
+  const brand = vehicle.brand || brandFromModel(vehicle.model);
+
+  return (
+    <section className="rounded-2xl border border-black/10 bg-white p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-lg font-black">{t("myVehicle")}</h2>
+        <Button variant="secondary" className="min-h-9 px-4 text-sm" onClick={() => setOpen(true)}>
+          {t("edit")}
+        </Button>
+      </div>
+      <div className="mt-4 flex items-center gap-4">
+        <BrandLogo brand={brand} size={72} />
+        <div className="min-w-0">
+          <strong className="block truncate font-display text-lg font-black">
+            {vehicle.model || t("notSet")}
+          </strong>
+          <span className="block text-sm text-neutral-500">
+            {t("licensePlateLabel")}: {vehicle.plate || t("notSet")}
+          </span>
+        </div>
+      </div>
+      <VehicleEditModal open={open} onClose={() => setOpen(false)} />
+    </section>
+  );
+}
+
 // Owner tools: lets a customer apply to run a car wash, shows their application
 // status, and — once approved — links into the owner-only dashboard (the
 // "owner mode" the user opts into; they're otherwise a normal customer).
@@ -496,6 +532,7 @@ function AccountMobile({ state, t, isSignedIn, isMember, membershipUntil, showTr
             </button>
           </div>
           <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
+          <VehicleCard />
           <SettingsCard />
           <OwnerToolsCard />
           <AdminToolsCard />
@@ -616,6 +653,7 @@ function AccountDesktop({ state, t, isSignedIn, isMember, membershipUntil, showT
                 <VoucherAccess count={getVouchers(state.voucher, t).length} t={t} onClick={onVouchers} />
               </section>
 
+              <VehicleCard />
               <SettingsCard />
               <OwnerToolsCard />
               <AdminToolsCard />
