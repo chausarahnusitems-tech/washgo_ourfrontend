@@ -78,7 +78,7 @@ export function VehicleEditModal({ open, onClose }) {
           <strong className="block truncate font-display text-base font-black">
             {composedModel || t("notSet")}
           </strong>
-          <span className="block text-xs text-neutral-500">
+          <span className="block truncate text-xs text-neutral-500">
             {t("licensePlateLabel")}: {plate.trim() || "—"}
           </span>
         </div>
