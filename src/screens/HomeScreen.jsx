@@ -14,6 +14,9 @@ import { TopBar } from "../components/layout/TopBar.jsx";
 import { MapPreview } from "../components/map/MapPreview.jsx";
 import { ShopCard } from "../components/ShopCard.jsx";
 import { NearbyCard } from "../components/NearbyCard.jsx";
+import { BrandLogo } from "../components/vehicle/BrandLogo.jsx";
+import { VehicleEditModal } from "../components/vehicle/VehicleEditModal.jsx";
+import { brandFromModel } from "../data/carBrands.js";
 
 const homeServiceTiles = [
   { id: "exterior", icon: icons.carwash },
@@ -204,25 +207,42 @@ function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, on
   if (closestBookable && !closestShops.includes(closestBookable)) {
     closestShops = [...byDistance.slice(0, 2), closestBookable];
   }
+  const [vehicleOpen, setVehicleOpen] = useState(false);
+  const vehicleBrand = state.vehicle.brand || brandFromModel(state.vehicle.model);
 
   return (
+    <>
     <section className="h-full overflow-y-auto bg-mist">
       <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[320px_1fr] gap-6 px-6 py-7 xl:px-10">
         {/* Left column */}
         <aside className="flex flex-col gap-4">
           <DashCard>
-            <CardHeader title={t("myVehicle")} />
-            <div className="mt-3 flex items-center gap-3">
-              <div className="grid h-16 w-24 shrink-0 place-items-center overflow-hidden rounded-xl bg-neutral-100">
-                <img src={images.car} alt="" className="h-full w-full object-contain p-1" />
-              </div>
-              <div className="min-w-0 text-right">
-                <strong className="block truncate font-display text-lg font-black">{state.vehicle.model}</strong>
-                <span className="block text-xs text-neutral-500">
-                  {t("licensePlateLabel")}: {state.vehicle.plate}
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-base font-black">{t("myVehicle")}</h2>
+              <button
+                type="button"
+                onClick={() => setVehicleOpen(true)}
+                aria-label={t("editVehicle")}
+                className="grid h-8 w-8 place-items-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-ink"
+              >
+                <Icon name="Pencil" className="h-4 w-4" />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVehicleOpen(true)}
+              className="mt-3 flex w-full items-center gap-3 text-left"
+            >
+              <BrandLogo brand={vehicleBrand} size={64} />
+              <div className="min-w-0">
+                <strong className="block truncate font-display text-lg font-black">
+                  {state.vehicle.model || t("notSet")}
+                </strong>
+                <span className="block truncate text-xs text-neutral-500">
+                  {t("licensePlateLabel")}: {state.vehicle.plate || "—"}
                 </span>
               </div>
-            </div>
+            </button>
           </DashCard>
 
           <DashCard>
@@ -348,26 +368,37 @@ function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, on
           <div className="grid grid-cols-2 gap-6">
             <PremiumCareCard t={t} aspectClass="aspect-[2/1]" imageWidthClass="w-[80%]" />
 
-            <section className="relative aspect-[2/1] overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_85%_20%,rgba(255,255,255,0.28),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-6 text-white">
-              {isMember ? (
-                <>
-                  <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
-                  <p className="mt-3 text-sm text-white/90">
-                    {t("memberActiveUntil")}
-                    <br />
-                    <strong>{membershipUntil || t("active")}</strong>
-                  </p>
-                  <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
-                </>
-              ) : (
-                <>
-                  <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
-                  <p className="mt-3 text-sm text-white/90">{t("membershipPitch")}</p>
-                  <button type="button" onClick={onPlans} className="mt-4 inline-flex rounded-full bg-white/90 px-4 py-1.5 text-sm font-black text-wash-600">
-                    {t("joinMembership")}
-                  </button>
-                </>
-              )}
+            <section className="relative aspect-[2/1] overflow-hidden rounded-[20px] bg-[linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-6 text-white">
+              {/* Decorative papercut artwork, full-bleed on the right. */}
+              <img
+                src={images.membershipBg}
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover object-right"
+              />
+              {/* Red wash fading left→right keeps the title / CTA readable over it. */}
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,#9c0000_0%,rgba(156,0,0,0.65)_40%,rgba(156,0,0,0)_72%)]" />
+              <div className="relative z-10">
+                {isMember ? (
+                  <>
+                    <h2 className="font-display text-2xl font-black">{t("proMember")}</h2>
+                    <p className="mt-3 text-sm text-white/90">
+                      {t("memberActiveUntil")}
+                      <br />
+                      <strong>{membershipUntil || t("active")}</strong>
+                    </p>
+                    <p className="mt-3 text-sm text-white/90">{t("unlimitedWashes")}</p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
+                    <p className="mt-3 text-sm text-white/90">{t("membershipPitch")}</p>
+                    <button type="button" onClick={onPlans} className="mt-4 inline-flex rounded-full bg-white/90 px-4 py-1.5 text-sm font-black text-wash-600">
+                      {t("joinMembership")}
+                    </button>
+                  </>
+                )}
+              </div>
             </section>
           </div>
 
@@ -413,6 +444,8 @@ function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, on
         </div>
       </div>
     </section>
+    <VehicleEditModal open={vehicleOpen} onClose={() => setVehicleOpen(false)} />
+    </>
   );
 }
 

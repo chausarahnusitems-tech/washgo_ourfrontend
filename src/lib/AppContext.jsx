@@ -53,7 +53,7 @@ function blankState() {
     booking: null,
     // No demo vehicle defaults in backend mode — a real user fills these in (and
     // the profile-completion reward depends on them actually being empty first).
-    vehicle: { model: "", plate: "", notes: "" },
+    vehicle: { brand: "", model: "", plate: "", notes: "" },
     promo: null
   };
 }

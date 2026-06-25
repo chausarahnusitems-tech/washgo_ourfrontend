@@ -4,7 +4,8 @@
 export const images = {
   hero: "/images/car-wash-hero.png",
   profile: "/images/profile-face.png",
-  car: "/images/car-icon.png"
+  car: "/images/car-icon.png",
+  membershipBg: "/images/premiumwash.png"
 };
 
 export const icons = {
