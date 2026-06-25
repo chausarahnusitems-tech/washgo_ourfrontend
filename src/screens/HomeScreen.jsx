@@ -51,6 +51,8 @@ export function HomeScreen() {
     onBook: () => router.push("/explore"),
     // Rebook a specific past booking's shop (Previous Booking card).
     onRebookShop: (shopId) => router.push(shopId ? `/shops/${shopId}/book` : "/explore"),
+    // Book a specific shop directly (Quick Actions "closest bookable" CTA).
+    onBookShop: (shopId) => router.push(`/shops/${shopId}/book`),
     onBookings: () => router.push("/bookings"),
     onPlans: () => router.push("/plans"),
     onTopUp: () => router.push("/topup")
@@ -166,8 +168,17 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, onService, onBook, onRebookShop, onBookings, onPlans }) {
+function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, onService, onBook, onRebookShop, onBookShop, onBookings, onPlans }) {
   const nearbyShops = getVisibleShops("");
+  // The "Nearby" rail surfaces only the three closest; the full list lives behind
+  // "View all". Prefer the live `distanceKm`, falling back to parsing the "X.X km"
+  // string (seed shops carry no numeric distance).
+  const distanceOf = (shop) => {
+    if (typeof shop.distanceKm === "number") return shop.distanceKm;
+    const parsed = parseFloat(shop.distance);
+    return Number.isNaN(parsed) ? Infinity : parsed;
+  };
+  const closestShops = [...nearbyShops].sort((a, b) => distanceOf(a) - distanceOf(b)).slice(0, 3);
   // Surface the user's actual next upcoming booking (seeded list), not a fake.
   const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
   // Most recent past booking (completed, cancelled, or an upcoming slot whose
@@ -175,6 +186,12 @@ function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, o
   // getShopById returns null for a stale/unknown shop id (e.g. backend mode).
   const previous = getPreviousBooking(state.bookings);
   const previousShop = previous ? getShopById(previous.shopId) : null;
+  // Quick Actions CTA: returning users rebook their last shop; first-time users
+  // (no history) get the nearest bookable (non-directory) car wash to start with.
+  const closestBookable =
+    [...nearbyShops]
+      .filter((shop) => shop.listingType !== "directory")
+      .sort((a, b) => distanceOf(a) - distanceOf(b))[0] ?? null;
 
   return (
     <section className="h-full overflow-y-auto bg-mist">
@@ -313,7 +330,7 @@ function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, o
               </button>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-4">
-              {nearbyShops.map((shop) => (
+              {closestShops.map((shop) => (
                 <NearbyCard key={shop.id} shop={shop} t={t} onSelect={onShop} />
               ))}
             </div>
