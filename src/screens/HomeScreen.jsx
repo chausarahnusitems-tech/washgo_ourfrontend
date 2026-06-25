@@ -264,13 +264,6 @@ function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, o
                 <Icon name="Car" className="h-5 w-5" />
                 {t("bookWash")}
               </Button>
-              <Link
-                href="/claim/new"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-wash-300 bg-wash-50 px-4 text-sm font-bold text-wash-600 transition hover:bg-wash-100"
-              >
-                <Icon name="Plus" className="h-5 w-5" />
-                List your car wash
-              </Link>
             </div>
           </DashCard>
 
