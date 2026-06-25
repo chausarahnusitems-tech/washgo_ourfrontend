@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { userLocation } from "../data/catalog.js";
 import { useGeolocation } from "../lib/useGeolocation.js";
 import { getBestShopMatch, rankShops, sortByPartnerThenDistance } from "../lib/booking.js";
+import { isShopOpenNow } from "../lib/hours.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -13,14 +14,6 @@ import { InteractiveMap } from "../components/map/InteractiveMapDynamic.jsx";
 import { ShopCard } from "../components/ShopCard.jsx";
 import { ShopDetailCard } from "../components/ShopDetailCard.jsx";
 import { BottomSheet } from "../components/ui/BottomSheet.jsx";
-
-// Filter chips map to canonical service ids (the chip copy keys differ from the
-// catalog service ids).
-const filterChips = [
-  { chip: "exteriorWash", service: "exterior", icon: "Car" },
-  { chip: "interiorWash", service: "interior", icon: "Armchair" },
-  { chip: "detail", service: "detailing", icon: "Sparkles" }
-];
 
 export function SearchBar({ value, onChange, t, activeFav, onToggleFav }) {
   // Local input state keeps typing responsive: the heavy URL write (route replace
@@ -77,34 +70,29 @@ export function SearchBar({ value, onChange, t, activeFav, onToggleFav }) {
   );
 }
 
-export function FilterChips({ t, activeService, onToggleService, onClearFilter }) {
+// Quick filters that narrow the shop set. Only "Open now" and a price cap are wired
+// up for now (more to come); each is an independent toggle persisted in the URL.
+export function FilterChips({ t, openNow, underPrice, onToggleOpenNow, onToggleUnderPrice }) {
+  const chips = [
+    { key: "open", icon: "Clock", label: t("filterOpenNow"), active: openNow, onToggle: onToggleOpenNow },
+    { key: "price", icon: "Coins", label: t("filterUnder100k"), active: underPrice, onToggle: onToggleUnderPrice }
+  ];
   return (
     <div className="flex items-center gap-2 overflow-x-auto">
-      <button
-        type="button"
-        aria-label={t("filters")}
-        onClick={onClearFilter}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-wash-300 text-wash-500"
-      >
-        <Icon name="Filter" className="h-4 w-4" />
-      </button>
-      {filterChips.map(({ chip, service, icon }) => {
-        const active = activeService === service;
-        return (
-          <button
-            key={chip}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onToggleService(service)}
-            className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-bold ${
-              active ? "bg-wash-500 text-white" : "border border-black/10 bg-white text-ink"
-            }`}
-          >
-            <Icon name={icon} className="h-4 w-4" />
-            {t(chip)}
-          </button>
-        );
-      })}
+      {chips.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          aria-pressed={chip.active}
+          onClick={chip.onToggle}
+          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-bold transition ${
+            chip.active ? "bg-wash-500 text-white" : "border border-black/10 bg-white text-ink"
+          }`}
+        >
+          <Icon name={chip.icon} className="h-4 w-4" />
+          {chip.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -119,7 +107,9 @@ export function ExploreScreen() {
   const allShops = catalog.shops ?? [];
 
   const search = searchParams.get("q") ?? "";
-  const activeService = searchParams.get("service") ?? null;
+  const openNow = searchParams.get("open") === "1";
+  const maxPriceParam = searchParams.get("maxprice");
+  const maxPrice = maxPriceParam ? Number(maxPriceParam) : null;
   const activeFav = searchParams.get("fav") === "1";
 
   const props = {
@@ -127,15 +117,16 @@ export function ExploreScreen() {
       ...state,
       search,
       mapShop: searchParams.get("shop") ?? null,
-      activeService,
+      openNow,
+      maxPrice,
       activeFav
     },
     allShops,
     t,
     onHome: () => router.push("/"),
     onSearch: (value) => setParams({ q: value }),
-    onToggleService: (service) => setParams({ service: service === activeService ? null : service }),
-    onClearFilter: () => setParams({ service: null }),
+    onToggleOpenNow: () => setParams({ open: openNow ? null : "1" }),
+    onToggleUnderPrice: () => setParams({ maxprice: maxPrice != null ? null : "100000" }),
     onToggleFav: () => setParams({ fav: activeFav ? null : "1" }),
     onSelectMapShop: (id) => setParams({ shop: id }),
     onCloseMapShop: () => setParams({ shop: null }),
@@ -151,17 +142,28 @@ export function ExploreScreen() {
 /* Desktop: persistent sidebar list + map; detail card floats next to  */
 /* the list (images 1 & 2).                                            */
 /* ------------------------------------------------------------------ */
-function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClearFilter, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
-  // MAP set: filtered ONLY by the service chip + favourites toggle — NOT the text
-  // query — so typing re-centers the map instead of making non-matching pins
+function ExploreDesktop({ state, allShops, t, onSearch, onToggleOpenNow, onToggleUnderPrice, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
+  // MAP set: filtered ONLY by the quick-filter chips + favourites toggle — NOT the
+  // text query — so typing re-centers the map instead of making non-matching pins
   // vanish. `allShops` is in the deps so this recomputes when the DB catalog
-  // arrives after first paint.
+  // arrives after first paint. `now` anchors the "open now" check to page load.
+  const [now] = useState(() => new Date());
   const mapShops = useMemo(() => {
-    const byService = state.activeService
-      ? allShops.filter((s) => (s.services ?? []).includes(state.activeService))
-      : allShops;
-    return state.activeFav ? byService.filter((s) => (state.favorites ?? []).includes(s.id)) : byService;
-  }, [state.activeService, state.activeFav, state.favorites, allShops]);
+    let result = allShops;
+    if (state.openNow) {
+      result = result.filter((s) => {
+        const open = isShopOpenNow(s, now);
+        return open === null ? s.open : open; // unknown hours → stored flag
+      });
+    }
+    if (state.maxPrice != null) {
+      result = result.filter((s) => s.starting > 0 && s.starting < state.maxPrice);
+    }
+    if (state.activeFav) {
+      result = result.filter((s) => (state.favorites ?? []).includes(s.id));
+    }
+    return result;
+  }, [state.openNow, state.maxPrice, state.activeFav, state.favorites, allShops, now]);
   // LIST set: when searching, the elastic/typo-tolerant ranked results for the
   // sidebar; otherwise the default browse order — partners first, then nearest.
   const listShops = useMemo(
@@ -181,7 +183,7 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
       <aside className="flex w-[380px] shrink-0 flex-col border-r border-black/10 bg-white">
         <div className="grid gap-3 border-b border-black/10 px-4 py-4">
           <SearchBar value={state.search} onChange={onSearch} t={t} activeFav={state.activeFav} onToggleFav={onToggleFav} />
-          <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
+          <FilterChips t={t} openNow={state.openNow} underPrice={state.maxPrice != null} onToggleOpenNow={onToggleOpenNow} onToggleUnderPrice={onToggleUnderPrice} />
         </div>
         <div className="grid gap-3 overflow-y-auto px-4 py-4">
           {listShops.length ? (
@@ -235,17 +237,28 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
 /* swaps the drawer for the detail sheet; back returns to the list     */
 /* (images 3 & 4).                                                     */
 /* ------------------------------------------------------------------ */
-function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, onClearFilter, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
-  // MAP set: filtered ONLY by the service chip + favourites toggle — NOT the text
-  // query — so typing re-centers the map instead of making non-matching pins
+function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleOpenNow, onToggleUnderPrice, onToggleFav, onSelectMapShop, onCloseMapShop, onBook }) {
+  // MAP set: filtered ONLY by the quick-filter chips + favourites toggle — NOT the
+  // text query — so typing re-centers the map instead of making non-matching pins
   // vanish. `allShops` is in the deps so this recomputes when the DB catalog
-  // arrives after first paint.
+  // arrives after first paint. `now` anchors the "open now" check to page load.
+  const [now] = useState(() => new Date());
   const mapShops = useMemo(() => {
-    const byService = state.activeService
-      ? allShops.filter((s) => (s.services ?? []).includes(state.activeService))
-      : allShops;
-    return state.activeFav ? byService.filter((s) => (state.favorites ?? []).includes(s.id)) : byService;
-  }, [state.activeService, state.activeFav, state.favorites, allShops]);
+    let result = allShops;
+    if (state.openNow) {
+      result = result.filter((s) => {
+        const open = isShopOpenNow(s, now);
+        return open === null ? s.open : open; // unknown hours → stored flag
+      });
+    }
+    if (state.maxPrice != null) {
+      result = result.filter((s) => s.starting > 0 && s.starting < state.maxPrice);
+    }
+    if (state.activeFav) {
+      result = result.filter((s) => (state.favorites ?? []).includes(s.id));
+    }
+    return result;
+  }, [state.openNow, state.maxPrice, state.activeFav, state.favorites, allShops, now]);
   // LIST set: when searching, the elastic/typo-tolerant ranked results for the
   // drawer list; otherwise the default browse order — partners first, then nearest.
   const listShops = useMemo(
@@ -303,7 +316,7 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
         >
           <div className="grid shrink-0 gap-3 px-4 pb-3 pt-1">
             <SearchBar value={state.search} onChange={onSearch} t={t} activeFav={state.activeFav} onToggleFav={onToggleFav} />
-            <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
+            <FilterChips t={t} openNow={state.openNow} underPrice={state.maxPrice != null} onToggleOpenNow={onToggleOpenNow} onToggleUnderPrice={onToggleUnderPrice} />
           </div>
           <div className="grid gap-3 overflow-y-auto px-4 pb-5">
             {listShops.length ? (
