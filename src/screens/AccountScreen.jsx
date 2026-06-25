@@ -294,7 +294,7 @@ function VehicleCard() {
           <strong className="block truncate font-display text-lg font-black">
             {vehicle.model || t("notSet")}
           </strong>
-          <span className="block text-sm text-neutral-500">
+          <span className="block truncate text-sm text-neutral-500">
             {t("licensePlateLabel")}: {vehicle.plate || t("notSet")}
           </span>
         </div>
