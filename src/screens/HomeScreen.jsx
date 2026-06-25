@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { icons, images } from "../assets.js";
 import { services as serviceCatalog } from "../data/catalog.js";
-import { formatVnd, getPreviousBooking, getShopById, getUpcomingBookings, getVisibleShops } from "../lib/booking.js";
+import { formatVnd, getPreviousBooking, getShopById, getUpcomingBookings, rankShops } from "../lib/booking.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { useUrlNav } from "../lib/useUrlNav.js";
 import { useIsDesktop } from "../lib/useIsDesktop.js";
@@ -25,11 +25,14 @@ const homeServiceTiles = [
 
 export function HomeScreen() {
   const isDesktop = useIsDesktop();
-  const { t, state, setLang, auth } = useApp();
+  const { t, state, setLang, auth, catalog } = useApp();
   const { router, searchParams, setParams } = useUrlNav();
 
   const props = {
     state: { ...state, search: searchParams.get("q") ?? "" },
+    // Live, location-aware catalog (haversine distances) — the same source the
+    // explore map uses, so home distances match rather than showing seed values.
+    allShops: catalog.shops ?? [],
     t,
     isMember: state.selectedPlan === "premium",
     membershipUntil: auth?.profile?.membership_until ?? null,
@@ -67,8 +70,8 @@ export function HomeScreen() {
 /* ------------------------------------------------------------------ */
 /* Mobile (original single-column marketplace)                         */
 /* ------------------------------------------------------------------ */
-function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onService, onTopUp }) {
-  const visibleShops = getVisibleShops(state.search);
+function HomeMobile({ state, allShops, t, onLang, onHome, onSearch, onShop, onExplore, onService, onTopUp }) {
+  const visibleShops = rankShops(allShops, state.search);
 
   return (
     <section className="h-full overflow-y-auto px-3.5 pb-5 pt-7">
@@ -168,17 +171,18 @@ function HomeMobile({ state, t, onLang, onHome, onSearch, onShop, onExplore, onS
 /* ------------------------------------------------------------------ */
 /* Desktop dashboard (image 1)                                         */
 /* ------------------------------------------------------------------ */
-function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, onService, onBook, onRebookShop, onBookShop, onBookings, onPlans }) {
-  const nearbyShops = getVisibleShops("");
-  // The "Nearby" rail surfaces only the three closest; the full list lives behind
-  // "View all". Prefer the live `distanceKm`, falling back to parsing the "X.X km"
-  // string (seed shops carry no numeric distance).
+function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, onExplore, onService, onBook, onRebookShop, onBookShop, onBookings, onPlans }) {
+  const nearbyShops = rankShops(allShops, "");
+  // Distance for sorting: the live haversine `distanceKm` (added by the context's
+  // liveCatalog from the user's location), falling back to parsing the "X.X km"
+  // string. Using the live catalog keeps these distances correct and consistent
+  // with the explore map.
   const distanceOf = (shop) => {
     if (typeof shop.distanceKm === "number") return shop.distanceKm;
     const parsed = parseFloat(shop.distance);
     return Number.isNaN(parsed) ? Infinity : parsed;
   };
-  const closestShops = [...nearbyShops].sort((a, b) => distanceOf(a) - distanceOf(b)).slice(0, 3);
+  const byDistance = [...nearbyShops].sort((a, b) => distanceOf(a) - distanceOf(b));
   // Surface the user's actual next upcoming booking (seeded list), not a fake.
   const upcoming = getUpcomingBookings(state.bookings)[0] ?? null;
   // Most recent past booking (completed, cancelled, or an upcoming slot whose
@@ -186,12 +190,20 @@ function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, o
   // getShopById returns null for a stale/unknown shop id (e.g. backend mode).
   const previous = getPreviousBooking(state.bookings);
   const previousShop = previous ? getShopById(previous.shopId) : null;
-  // Quick Actions CTA: returning users rebook their last shop; first-time users
-  // (no history) get the nearest bookable (non-directory) car wash to start with.
+  // Quick Actions offers two shortcuts side by side: a one-tap rebook of the last
+  // shop (when there's history) AND the single nearest bookable car wash. The
+  // nearest excludes the rebook shop so the two suggestions never point at the same
+  // place; `closestIsNearby` flags the "right next to you" (<1km) case for emphasis.
   const closestBookable =
-    [...nearbyShops]
-      .filter((shop) => shop.listingType !== "directory")
-      .sort((a, b) => distanceOf(a) - distanceOf(b))[0] ?? null;
+    byDistance.find((shop) => shop.listingType !== "directory" && shop.id !== previous?.shopId) ?? null;
+  const closestIsNearby = closestBookable ? distanceOf(closestBookable) < 1 : false;
+  // The "Nearby" rail shows the three closest, but always keep the bookable shop
+  // featured in Quick Actions present so the two stay consistent (it can otherwise
+  // be pushed out of the top three by directory listings or the rebook shop).
+  let closestShops = byDistance.slice(0, 3);
+  if (closestBookable && !closestShops.includes(closestBookable)) {
+    closestShops = [...byDistance.slice(0, 2), closestBookable];
+  }
 
   return (
     <section className="h-full overflow-y-auto bg-mist">
@@ -277,10 +289,47 @@ function HomeDesktop({ state, t, isMember, membershipUntil, onShop, onExplore, o
           <DashCard>
             <CardHeader title={t("quickActions")} />
             <div className="mt-3 grid gap-3">
-              <Button onClick={onBook}>
-                <Icon name="Car" className="h-5 w-5" />
-                {t("bookWash")}
-              </Button>
+              {/* Returning users: one-tap rebook of their last shop. */}
+              {previous ? (
+                <Button onClick={() => onRebookShop(previous.shopId)}>
+                  <Icon name="RotateCcw" className="h-5 w-5" />
+                  {t("rebook")}
+                </Button>
+              ) : null}
+
+              {/* The single nearest bookable car wash — always offered as a quick
+                  way to get a wash close by, with a badge when it's right nearby. */}
+              {closestBookable ? (
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-black uppercase tracking-wide text-neutral-500">
+                      <Icon name="LocateFixed" className="h-3.5 w-3.5" />
+                      {t("closestToYou")}
+                    </span>
+                    {closestIsNearby ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-600">
+                        {"< 1 km"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <ShopCard shop={closestBookable} t={t} onSelect={onShop} />
+                  <Button
+                    variant={previous ? "secondary" : "primary"}
+                    onClick={() => onBookShop(closestBookable.id)}
+                  >
+                    <Icon name="Car" className="h-5 w-5" />
+                    {t("bookWash")}
+                  </Button>
+                </div>
+              ) : null}
+
+              {/* Nothing to suggest (no history, no bookable shop) — generic browse. */}
+              {!previous && !closestBookable ? (
+                <Button onClick={onBook}>
+                  <Icon name="Car" className="h-5 w-5" />
+                  {t("bookWash")}
+                </Button>
+              ) : null}
             </div>
           </DashCard>
 
