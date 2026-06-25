@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { userLocation } from "../data/catalog.js";
 import { useGeolocation } from "../lib/useGeolocation.js";
 import { getBestShopMatch, rankShops, sortByPartnerThenDistance } from "../lib/booking.js";
@@ -110,19 +109,6 @@ export function FilterChips({ t, activeService, onToggleService, onClearFilter }
   );
 }
 
-// CTA for owners to put their car wash on the map (new-shop application).
-export function ListYourCarWashButton({ className }) {
-  return (
-    <Link
-      href="/claim/new"
-      className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-wash-300 bg-wash-50 px-3 text-sm font-bold text-wash-600 transition hover:bg-wash-100 ${className ?? ""}`}
-    >
-      <Icon name="Plus" className="h-4 w-4" />
-      List your car wash
-    </Link>
-  );
-}
-
 export function ExploreScreen() {
   const isDesktop = useIsDesktop();
   const { t, state, catalog } = useApp();
@@ -196,7 +182,6 @@ function ExploreDesktop({ state, allShops, t, onSearch, onToggleService, onClear
         <div className="grid gap-3 border-b border-black/10 px-4 py-4">
           <SearchBar value={state.search} onChange={onSearch} t={t} activeFav={state.activeFav} onToggleFav={onToggleFav} />
           <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
-          <ListYourCarWashButton />
         </div>
         <div className="grid gap-3 overflow-y-auto px-4 py-4">
           {listShops.length ? (
@@ -319,7 +304,6 @@ function ExploreMobile({ state, allShops, t, onHome, onSearch, onToggleService, 
           <div className="grid shrink-0 gap-3 px-4 pb-3 pt-1">
             <SearchBar value={state.search} onChange={onSearch} t={t} activeFav={state.activeFav} onToggleFav={onToggleFav} />
             <FilterChips t={t} activeService={state.activeService} onToggleService={onToggleService} onClearFilter={onClearFilter} />
-            <ListYourCarWashButton />
           </div>
           <div className="grid gap-3 overflow-y-auto px-4 pb-5">
             {listShops.length ? (
