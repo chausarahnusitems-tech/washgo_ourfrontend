@@ -13,14 +13,17 @@ import {
   fetchOwnerBookings,
   fetchOwnerShops
 } from "./data/api.js";
-import { ensureSeen, getSeen, markSeen } from "./lastSeen.js";
+import { getSeen, markSeen } from "./lastSeen.js";
 
-// Notification counts for the owner/admin nav. Returns a map keyed by the nav
-// item key ({ bookings, messages, reviews } for owners; { queue, claims,
-// reports, messages, reviews } for admins). Counts are "new since you last
-// opened that section" for time-based sections (bookings/reviews), live unread
-// for messages, and outstanding work for admin queue/claims/reports.
+// Notification counts for the owner/admin nav. The badge SET is chosen by the
+// AREA being viewed (/owner vs /admin), NOT the role — an admin who also owns a
+// shop sees owner badges while in /owner and admin badges while in /admin.
+//   owner: { bookings, messages, reviews }
+//   admin: { queue, claims, reports, messages, reviews }
 const POLL_MS = 60000;
+// Items created within this window still count as "new" until their section is
+// opened, so recent activity badges on first view (then clears when visited).
+const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Time-based sections clear when their page is opened (markSeen on navigation).
 const TIME_ROUTES = [
@@ -29,8 +32,8 @@ const TIME_ROUTES = [
   { match: "/admin/reviews", key: "admin:reviews" }
 ];
 
-function isNewerThanSeen(items, uid, key) {
-  const seen = getSeen(uid, key);
+function newCount(items, uid, key) {
+  const seen = Math.max(getSeen(uid, key), Date.now() - NEW_WINDOW_MS);
   return (items ?? []).filter((it) => it.createdAt && Date.parse(it.createdAt) > seen).length;
 }
 
@@ -40,31 +43,32 @@ export function useNavBadges() {
   const pathname = usePathname();
   const role = auth.profile?.role ?? null;
   const uid = auth.user?.id ?? null;
-  const enabled = mode === "backend" && Boolean(uid) && (role === "owner" || role === "admin");
+  const area = pathname.startsWith("/admin") ? "admin" : pathname.startsWith("/owner") ? "owner" : null;
+  const enabled = mode === "backend" && Boolean(uid) && area !== null && (role === "owner" || role === "admin");
 
   const data = useRef({});
   const [counts, setCounts] = useState({});
 
   const recompute = useCallback(() => {
     const d = data.current;
-    if (role === "owner") {
+    if (area === "owner") {
       setCounts({
         messages: d.unread ?? 0,
-        bookings: isNewerThanSeen(d.bookings, uid, "owner:bookings"),
-        reviews: isNewerThanSeen(d.reviews, uid, "owner:reviews")
+        bookings: newCount(d.bookings, uid, "owner:bookings"),
+        reviews: newCount(d.reviews, uid, "owner:reviews")
       });
-    } else if (role === "admin") {
+    } else if (area === "admin") {
       setCounts({
         messages: d.unread ?? 0,
         queue: d.pendingShops ?? 0,
         claims: d.pendingClaims ?? 0,
         reports: d.openReports ?? 0,
-        reviews: isNewerThanSeen(d.reviews, uid, "admin:reviews")
+        reviews: newCount(d.reviews, uid, "admin:reviews")
       });
     } else {
       setCounts({});
     }
-  }, [role, uid]);
+  }, [area, uid]);
 
   const load = useCallback(async () => {
     if (!enabled) {
@@ -72,7 +76,7 @@ export function useNavBadges() {
       return;
     }
     try {
-      if (role === "owner") {
+      if (area === "owner") {
         const [convs, shops, reviews] = await Promise.all([
           fetchConversations(supabase),
           fetchOwnerShops(supabase, uid),
@@ -104,15 +108,7 @@ export function useNavBadges() {
     } catch (err) {
       console.error("[washgo] nav badges load failed", err);
     }
-  }, [enabled, role, uid, supabase, recompute]);
-
-  // Baseline the time-based sections once so existing history isn't all "new".
-  useEffect(() => {
-    if (!enabled) return;
-    ensureSeen(uid, "owner:bookings");
-    ensureSeen(uid, "owner:reviews");
-    ensureSeen(uid, "admin:reviews");
-  }, [enabled, uid]);
+  }, [enabled, area, uid, supabase, recompute]);
 
   // Fetch on mount + poll.
   useEffect(() => {

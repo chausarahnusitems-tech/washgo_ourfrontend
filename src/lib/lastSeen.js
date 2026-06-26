@@ -2,7 +2,9 @@
 // counts items newer than the last time the user opened that section. Stored
 // under `washgo:` localStorage keys so signOut clears them with the rest of the
 // cached app state. Namespaced by user id so switching accounts is clean.
-const PREFIX = "washgo:seen:";
+// v2: badges now use a recency window instead of a first-load baseline, so the
+// bumped prefix discards any stale baseline timestamps from the old scheme.
+const PREFIX = "washgo:seen:v2:";
 
 function storageKey(userId, key) {
   return `${PREFIX}${userId}:${key}`;

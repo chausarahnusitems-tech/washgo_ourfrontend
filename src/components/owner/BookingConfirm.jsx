@@ -45,6 +45,14 @@ async function recognisePlate(file) {
   }
 }
 
+// Build a user-visible error that includes the underlying reason (Supabase
+// storage / RPC errors carry a useful `message`), so a failed upload says WHY
+// instead of a generic "something went wrong".
+function describeError(err, t) {
+  const msg = err?.message || err?.error_description || err?.error || err?.hint;
+  return msg ? `${t("cfmError")} — ${msg}` : t("cfmError");
+}
+
 // Per-booking owner confirmation control shown in the owner bookings list.
 //   upcoming  -> "Car arrived — intake photo"  (camera) -> owner_mark_arrived
 //   arrived   -> "Scan plate & complete"       (camera + OCR) -> review -> complete
@@ -79,7 +87,7 @@ export function BookingConfirm({ booking, supabase, onChanged }) {
       onChanged?.();
     } catch (err) {
       console.error("[washgo] mark arrived failed", err);
-      setError(t("cfmError"));
+      setError(describeError(err, t));
       setPhase("idle");
     }
   }
@@ -110,7 +118,7 @@ export function BookingConfirm({ booking, supabase, onChanged }) {
       setPhase("review");
     } catch (err) {
       console.error("[washgo] completion upload failed", err);
-      setError(t("cfmError"));
+      setError(describeError(err, t));
       setPhase("idle");
     }
   }
@@ -123,7 +131,7 @@ export function BookingConfirm({ booking, supabase, onChanged }) {
       onChanged?.();
     } catch (err) {
       console.error("[washgo] complete booking failed", err);
-      setError(t("cfmError"));
+      setError(describeError(err, t));
       setPhase("review");
     }
   }
