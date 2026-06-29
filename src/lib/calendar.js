@@ -73,7 +73,12 @@ export function buildMonthGrid(year, month) {
       past: date < today
     });
   }
-  return cells;
+  // Drop trailing weeks that fall entirely outside the viewed month, so a June
+  // grid (say) never renders an all-July bottom row. Leading out-of-month cells
+  // stay so the first week keeps its weekday alignment (rendered blank by the UI).
+  let len = cells.length;
+  while (len > 7 && cells.slice(len - 7, len).every((c) => c.muted)) len -= 7;
+  return cells.slice(0, len);
 }
 
 // Resolve a UI date id to a concrete ISO date for the backend. ISO ids pass

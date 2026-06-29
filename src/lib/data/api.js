@@ -712,6 +712,20 @@ export async function deleteSlotOverride(supabase, shopId, date) {
   );
 }
 
+// Close (or reopen) a whole date range for a shop in one call — e.g. a holiday
+// shutdown. Owner-scoped SECURITY DEFINER RPC; closures are enforced by the
+// booking RPCs (a closed day blocks bookings). Returns the number of days set.
+export async function setShopClosedRange(supabase, shopId, fromIso, toIso, closed = true) {
+  return unwrap(
+    await supabase.rpc("set_shop_closed_range", {
+      p_shop_id: shopId,
+      p_from: fromIso,
+      p_to: toIso,
+      p_closed: closed
+    })
+  );
+}
+
 export async function fetchCustomServices(supabase, shopId) {
   return unwrap(
     await supabase

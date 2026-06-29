@@ -224,10 +224,11 @@ export function BookingDetailScreen({ bookingId }) {
                   <span key={day} className="text-center text-[0.72rem] font-black">{day}</span>
                 ))}
                 {grid.map((cell) => {
+                  if (cell.muted) return <span key={cell.iso} aria-hidden="true" className="min-h-7" />;
                   const selected =
                     cell.iso === draft.dateId ||
                     (draft.dateId === "today" && cell.iso === todayIso);
-                  const disabled = cell.muted || cell.past || isWeeklyClosed(shop, cell.iso);
+                  const disabled = cell.past || isWeeklyClosed(shop, cell.iso);
                   return (
                     <button
                       key={cell.iso}

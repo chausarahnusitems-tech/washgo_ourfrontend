@@ -333,10 +333,12 @@ export function BookingScreen({ shopId }) {
               </span>
             ))}
             {grid.map((cell) => {
+              // Out-of-month days render as blanks so only the viewed month shows.
+              if (cell.muted) return <span key={cell.iso} aria-hidden="true" className="min-h-7" />;
               const selected =
                 cell.iso === state.selectedDate ||
                 (state.selectedDate === "today" && cell.iso === todayIso);
-              const disabled = cell.muted || cell.past || isWeeklyClosed(shop, cell.iso);
+              const disabled = cell.past || isWeeklyClosed(shop, cell.iso);
               return (
                 <button
                   key={cell.iso}
