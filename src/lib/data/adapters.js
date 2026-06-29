@@ -90,6 +90,9 @@ export function adaptShop(row, origin = userLocation) {
     starting: row.starting_price ?? 0,
     wait: row.wait_minutes != null ? `${row.wait_minutes} min` : "",
     services: row.services ?? [],
+    // The shop's standard car wash — the service the free-wash voucher covers
+    // (defaults to the catalogue "Car Wash"; Würth Go uses its German-Standard).
+    standardServiceId: row.standard_service_id ?? "exterior",
     // Per-shop custom (owner-defined) services — bookable alongside the catalogue
     // ones. Keyed by uuid id; name is shown directly (not via i18n).
     customServices: (row.shop_custom_services ?? []).map((c) => ({

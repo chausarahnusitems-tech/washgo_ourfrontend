@@ -513,13 +513,14 @@ export function AppProvider({ children }) {
           const ids = serviceIdsArg ?? prev.selectedServices;
           const subtotal = getSubtotal(ids);
           if (subtotal <= 0) return prev;
-          // The free-wash voucher only engages when the standard car wash is in the
-          // cart, and it covers ONLY that wash — extra services are still charged.
-          const redeeming = Boolean(prev.pendingVoucher && prev.voucher && ids.includes("exterior"));
+          const standardId = getCurrentShop(shopId)?.standardServiceId || "exterior";
+          // The free-wash voucher only engages when the shop's standard car wash is
+          // in the cart, and it covers ONLY that wash — extras are still charged.
+          const redeeming = Boolean(prev.pendingVoucher && prev.voucher && ids.includes(standardId));
           const membershipDiscount = getDiscount(prev.selectedPlan, ids);
           const couponDiscount = redeeming ? 0 : getCouponDiscount(prev.promo, subtotal, membershipDiscount);
           const baseTotal = Math.max(0, subtotal - membershipDiscount - couponDiscount);
-          const freeWashAmount = redeeming ? getSubtotal(["exterior"]) : 0;
+          const freeWashAmount = redeeming ? getSubtotal([standardId]) : 0;
           const charge = Math.max(0, baseTotal - freeWashAmount);
           if (charge > prev.funds) return prev;
           ok = true;
@@ -574,9 +575,10 @@ export function AppProvider({ children }) {
       if (!auth.user) return false;
       const serviceIds = serviceIdsArg ?? state.selectedServices;
       if (!serviceIds.length) return false;
-      // The voucher only applies when the standard car wash is in the cart (the
-      // server requires it and charges for any extra services).
-      const useVoucher = Boolean(state.pendingVoucher && state.voucher && serviceIds.includes("exterior"));
+      // The voucher only applies when the shop's standard car wash is in the cart
+      // (the server requires it and charges for any extra services).
+      const standardId = getCurrentShop(shopId)?.standardServiceId || "exterior";
+      const useVoucher = Boolean(state.pendingVoucher && state.voucher && serviceIds.includes(standardId));
       try {
         const res = await rpcCreateBooking(supabase, {
           shopId,

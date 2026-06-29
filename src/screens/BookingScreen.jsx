@@ -271,10 +271,11 @@ export function BookingScreen({ shopId }) {
 
   // A pending free-wash voucher makes the booking free; otherwise the wallet
   // must cover the total (after any membership + promo-code discount).
-  const hasStandardWash = effectiveSelected.includes("exterior");
+  const standardServiceId = shop.standardServiceId || "exterior";
+  const hasStandardWash = effectiveSelected.includes(standardServiceId);
   const redeeming = Boolean(state.pendingVoucher && state.voucher && hasStandardWash);
-  // The free wash covers only the standard car wash; any extra services are charged.
-  const freeWashAmount = redeeming ? (selectedServices.find((s) => s.id === "exterior")?.price ?? 0) : 0;
+  // The free wash covers only the shop's standard car wash; extras are charged.
+  const freeWashAmount = redeeming ? (selectedServices.find((s) => s.id === standardServiceId)?.price ?? 0) : 0;
   const couponDiscount = redeeming ? 0 : getCouponDiscount(promo, subtotal, discount);
   const charge = Math.max(0, total - couponDiscount - freeWashAmount);
   const insufficient = charge > state.funds;
