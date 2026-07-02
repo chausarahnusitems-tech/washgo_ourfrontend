@@ -599,6 +599,11 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       setActiveId(id);
     } catch (err) {
       console.error("[washgo] open support failed", err);
+      // Hit the concurrent-support-chat cap — tell the user to close one first.
+      if (/support_chat_limit/i.test(err?.message || "")) {
+        setShowTagPicker(false);
+        window.alert(t("supportChatLimit"));
+      }
     } finally {
       setStarting(false);
     }
@@ -721,9 +726,19 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     }
     return (
       <div className="p-4">
-        <h4 className="font-display text-sm font-black uppercase tracking-wide text-neutral-500">
-          {t("issueDetails")}
-        </h4>
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="font-display text-sm font-black uppercase tracking-wide text-neutral-500">
+            {t("issueDetails")}
+          </h4>
+          <button
+            type="button"
+            onClick={() => setShowDetails(false)}
+            aria-label={t("close")}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-ink"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
         <dl className="mt-3 space-y-3">
           {rows.map(([k, v]) => (
             <div key={k}>

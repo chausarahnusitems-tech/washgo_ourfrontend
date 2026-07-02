@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff, MapPin, Pencil, Send, Undo2 } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Info, MapPin, Pencil, Send, Undo2 } from "lucide-react";
 import { userLocation } from "../../data/catalog.js";
+import { useGeolocation } from "../../lib/useGeolocation.js";
 import { useOwnerShops } from "../../lib/owner/useOwnerShops.js";
 import { cx } from "../../lib/cx.js";
 import { Button } from "../../components/ui/Button.jsx";
@@ -198,19 +199,37 @@ function StatusActions({ shop, submit, setPublished }) {
     );
   }
   if (shop.status === "approved") {
-    const canPublish =
-      ((shop.serviceIds?.length ?? 0) > 0 || (shop.customServiceCount ?? 0) > 0) &&
-      shop.address &&
-      shop.open_time &&
-      shop.close_time;
+    // Spell out exactly what's missing so the disabled "Release publicly" button
+    // isn't a dead end — the owner sees which details to add.
+    const hasService = (shop.serviceIds?.length ?? 0) > 0 || (shop.customServiceCount ?? 0) > 0;
+    const missing = [];
+    if (!shop.address) missing.push("an address");
+    if (!(shop.open_time && shop.close_time)) missing.push("opening hours");
+    if (!hasService) missing.push("at least one service");
+    const canPublish = missing.length === 0;
+    const missingText =
+      missing.length === 0
+        ? ""
+        : missing.length === 1
+          ? missing[0]
+          : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
+    const reason = canPublish ? undefined : `Add ${missingText} before you can release it publicly.`;
     return (
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3">
-        <p className="flex-1 text-sm text-emerald-800">
-          Approved.{" "}
-          {shop.published
-            ? "Your shop is live and bookable."
-            : "Release it publicly when you're ready to take bookings."}
-        </p>
+        <div className="min-w-[12rem] flex-1">
+          <p className="text-sm text-emerald-800">
+            Approved.{" "}
+            {shop.published
+              ? "Your shop is live and bookable."
+              : "Release it publicly when you're ready to take bookings."}
+          </p>
+          {!shop.published && !canPublish ? (
+            <p className="mt-1 flex items-start gap-1.5 text-sm font-semibold text-amber-700">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {reason}
+            </p>
+          ) : null}
+        </div>
         {shop.published ? (
           <Button variant="secondary" className="min-h-9 px-3 text-sm" disabled={busy} onClick={() => run(() => setPublished(shop.id, false))}>
             <EyeOff className="h-4 w-4" aria-hidden="true" />
@@ -220,7 +239,7 @@ function StatusActions({ shop, submit, setPublished }) {
           <Button
             className="min-h-9 px-3 text-sm"
             disabled={busy || !canPublish}
-            title={canPublish ? undefined : "Add hours, address and at least one service first"}
+            title={reason}
             onClick={() => run(() => setPublished(shop.id, true))}
           >
             <Eye className="h-4 w-4" aria-hidden="true" />
@@ -278,6 +297,9 @@ function ShopDetailsForm({ shop, onSave, submitLabel }) {
     () => (hasPoint ? [{ id: "picked", lat: form.lat, lng: form.lng }] : []),
     [hasPoint, form.lat, form.lng]
   );
+  // Live device location so the map's "recenter" control snaps back to where the
+  // owner actually is (e.g. standing at the shop), falling back to the seed centre.
+  const liveLocation = useGeolocation(userLocation);
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -385,7 +407,9 @@ function ShopDetailsForm({ shop, onSave, submitLabel }) {
           shops={pins}
           selectedId={hasPoint ? "picked" : null}
           onPick={pickLocation}
-          userLocation={userLocation}
+          userLocation={liveLocation}
+          showRecenter
+          recenterLabel="Recenter"
           className="h-72 w-full"
           rounded="rounded-2xl"
         />

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Gift, Percent, Ticket } from "lucide-react";
+import { Ban, Check, Gift, Percent, RefreshCw, Ticket } from "lucide-react";
 import { useApp } from "../lib/AppContext.jsx";
 import { createClient } from "../lib/supabase/client.js";
 import { formatVnd } from "../lib/booking.js";
@@ -20,16 +20,31 @@ const PERKS = [
 
 export function PlansScreen() {
   const router = useRouter();
-  const { t, state, auth, mode, startMembership } = useApp();
+  const { t, state, auth, mode, startMembership, setMembershipAutoRenew } = useApp();
   const onBack = useBackOr("/account");
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
+  const [renewBusy, setRenewBusy] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   // Member if there's a renewal date (backend) or the premium tier is active
   // (demo, which has no DB membership_until).
   const memberUntil = auth.profile?.membership_until ?? null;
   const isMember = Boolean(memberUntil) || (mode === "demo" && state.selectedPlan === "premium");
+  // Auto-renew is on by default; only the explicit false (a manual cancel) turns
+  // it off. Surfaced only in backend mode where there's a real renewal date.
+  const autoRenew = auth.profile?.membership_auto_renew !== false;
+  const showAutoRenew = mode === "backend" && Boolean(memberUntil);
+
+  // Toggle auto-renewal. Cancelling is confirmed since it stops future billing
+  // (perks stay until the renewal date, then it lapses to basic).
+  const onToggleAutoRenew = async (on) => {
+    if (renewBusy) return;
+    if (!on && !window.confirm(t("cancelAutoRenewConfirm"))) return;
+    setRenewBusy(true);
+    await setMembershipAutoRenew(on);
+    setRenewBusy(false);
+  };
 
   const [coupons, setCoupons] = useState([]);
   useEffect(() => {
@@ -87,9 +102,21 @@ export function PlansScreen() {
           <section className="overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_85%_15%,rgba(255,255,255,0.3),transparent_30%),linear-gradient(135deg,#9c0000,#c40000_60%,#ff5a4a)] p-6 text-white">
             <h2 className="font-display text-2xl font-black">{t("washgoMembership")}</h2>
             {isMember ? (
-              <p className="mt-2 text-sm text-white/90">
-                {t("memberActiveUntil")} <strong>{memberUntil || t("active")}</strong>
-              </p>
+              <>
+                <p className="mt-2 text-sm text-white/90">
+                  {t("memberActiveUntil")} <strong>{memberUntil || t("active")}</strong>
+                </p>
+                {showAutoRenew ? (
+                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white">
+                    {autoRenew ? (
+                      <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    {autoRenew ? t("autoRenewOn") : t("autoRenewOff")}
+                  </p>
+                ) : null}
+              </>
             ) : (
               <p className="mt-2 text-sm text-white/90">{t("membershipPitch")}</p>
             )}
@@ -128,7 +155,6 @@ export function PlansScreen() {
                       <strong className="block text-sm text-ink">{c.code}</strong>
                       <span className="text-xs text-neutral-500">{c.description}</span>
                     </div>
-                    <span className="text-sm font-black text-wash-600">{c.percent}%</span>
                   </li>
                 ))}
               </ul>
@@ -140,11 +166,35 @@ export function PlansScreen() {
       <footer className="border-t border-black/20 bg-white p-4">
         <div className="mx-auto w-full max-w-xl">
           {joinError ? <p className="mb-3 text-sm font-bold text-wash-500">{joinError}</p> : null}
+          {showAutoRenew ? (
+            <p className="mb-3 text-xs text-neutral-500">
+              {autoRenew ? t("autoRenewBilling") : `${t("autoRenewEndsOn")} ${memberUntil}.`}
+            </p>
+          ) : null}
           {isMember ? (
-            <Button onClick={onJoin} variant="secondary" disabled={joining} className="w-full rounded-2xl">
-              <Check className="h-5 w-5" />
-              {joining ? "…" : t("renewMembership")}
-            </Button>
+            <div className="grid gap-2">
+              <Button onClick={onJoin} variant="secondary" disabled={joining} className="w-full rounded-2xl">
+                <Check className="h-5 w-5" />
+                {joining ? "…" : t("renewMembership")}
+              </Button>
+              {showAutoRenew ? (
+                autoRenew ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggleAutoRenew(false)}
+                    disabled={renewBusy}
+                    className="min-h-10 text-center text-sm font-bold text-neutral-500 transition hover:text-wash-600 disabled:opacity-50"
+                  >
+                    {t("cancelAutoRenew")}
+                  </button>
+                ) : (
+                  <Button onClick={() => onToggleAutoRenew(true)} disabled={renewBusy} className="w-full rounded-2xl">
+                    <RefreshCw className="h-5 w-5" />
+                    {t("resumeAutoRenew")}
+                  </Button>
+                )
+              ) : null}
+            </div>
           ) : (
             <Button onClick={onJoin} className="w-full rounded-2xl" disabled={joining || (mode === "backend" && !auth.user)}>
               {mode === "backend" && !auth.user ? t("signInToJoin") : joining ? "…" : t("joinMembership")}

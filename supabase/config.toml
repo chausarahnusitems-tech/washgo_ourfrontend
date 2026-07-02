@@ -2,3 +2,9 @@
 # to attach this repo to the live project, then `supabase db push` applies any
 # unapplied files from supabase/migrations/ in version order.
 project_id = "washgo"
+
+# Membership email dispatcher. Keeps platform JWT verification on — the pg_cron
+# scheduler authenticates with the service-role key (see the scheduling
+# migration), so no custom auth code is required in the function.
+[functions.dispatch-membership-emails]
+verify_jwt = true

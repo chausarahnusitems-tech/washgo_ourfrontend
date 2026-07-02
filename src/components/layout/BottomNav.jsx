@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Icon } from "../ui/Icon.jsx";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
+import { useChatBadge } from "../../lib/useChatBadge.js";
 
 // [key, icon, label-copy-key, href].
 const navItems = [
@@ -27,6 +28,7 @@ export function BottomNav({ className }) {
   const { t } = useApp();
   const pathname = usePathname();
   const active = activeKey(pathname);
+  const chatUnread = useChatBadge();
 
   return (
     <nav
@@ -38,9 +40,17 @@ export function BottomNav({ className }) {
           "grid min-w-0 place-items-center content-center gap-1 text-[0.68rem]",
           active === key ? "font-extrabold text-wash-500" : "text-neutral-500"
         );
+        const showBadge = key === "chat" && chatUnread > 0;
         const inner = (
           <>
-            <Icon name={icon} className="h-[21px] w-[21px]" />
+            <span className="relative">
+              <Icon name={icon} className="h-[21px] w-[21px]" />
+              {showBadge ? (
+                <span className="absolute -right-2 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-wash-500 px-1 text-[0.55rem] font-black leading-none text-white ring-2 ring-white">
+                  {chatUnread > 9 ? "9+" : chatUnread}
+                </span>
+              ) : null}
+            </span>
             <span>{t(copyKey)}</span>
           </>
         );

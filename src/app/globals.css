@@ -69,6 +69,21 @@ textarea:focus-visible {
   transform: rotate(2deg);
 }
 
+/* Larger map controls (zoom in/out + "locate me" recenter) so they're easier to
+   tap. MapLibre's default control buttons are 29px; bump them and scale both the
+   built-in zoom glyphs (background image) and our inline recenter SVG to match. */
+.maplibregl-ctrl-group button {
+  width: 40px;
+  height: 40px;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  background-size: 22px 22px;
+}
+.maplibregl-ctrl-group button svg {
+  width: 22px;
+  height: 22px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

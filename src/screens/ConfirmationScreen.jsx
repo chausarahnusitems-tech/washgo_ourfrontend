@@ -31,39 +31,41 @@ export function ConfirmationScreen() {
   if (!state.booking) return null;
 
   return (
-    <section className="relative h-full overflow-y-auto bg-white px-4 py-7 lg:bg-mist">
+    <section className="relative h-full overflow-y-auto bg-white px-4 py-8 sm:py-10 lg:bg-mist">
       {/* Cross button to close the confirmation and return home */}
-      <div className="mx-auto flex w-full max-w-xl justify-end">
+      <div className="mx-auto flex w-full max-w-2xl justify-end">
         <IconButton label={t("close")} onClick={onHome} className="bg-neutral-100">
           <Icon name="X" className="h-5 w-5" />
         </IconButton>
       </div>
 
-      <div className="mx-auto w-full max-w-xl text-center">
-        <div className="mx-auto mt-2 grid h-16 w-16 place-items-center rounded-full bg-wash-500 text-white">
-          <Icon name="Check" className="h-8 w-8" />
+      <div className="mx-auto w-full max-w-2xl text-center">
+        <div className="mx-auto mt-2 grid h-24 w-24 place-items-center rounded-full bg-wash-500 text-white shadow-lg shadow-wash-500/30">
+          <Icon name="Check" className="h-12 w-12" />
         </div>
-        <h1 className="mt-5 font-display text-2xl font-black">{t("confirmedTitle")}</h1>
-        <p className="mx-5 mt-2 text-sm text-neutral-600">{t("confirmedCopy")}</p>
+        <h1 className="mt-6 font-display text-3xl font-black sm:text-4xl">{t("confirmedTitle")}</h1>
+        <p className="mx-auto mt-3 max-w-md text-base text-neutral-600">{t("confirmedCopy")}</p>
 
         {state.booking ? (
-          <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-wash-50 px-4 py-1.5 text-sm font-black text-wash-600">
-            <Icon name="Wallet" className="h-4 w-4" />
+          <p className="mt-5 inline-flex items-center gap-2 rounded-full bg-wash-50 px-6 py-3 text-lg font-black text-wash-600">
+            <Icon name="Wallet" className="h-5 w-5" />
             {t("total")}: {formatVnd(state.booking.total)}
           </p>
         ) : null}
 
-        <div className="mt-5 grid gap-4 text-left">
+        <div className="mt-7 grid gap-5 text-left">
           {state.booking ? <BookingCard booking={state.booking} shop={shop} t={t} /> : null}
           <RewardsCard stamps={state.stamps} voucher={state.voucher} t={t} onUse={onUseVoucher} />
         </div>
 
-        <div className="mt-5 grid gap-3">
-          <Button onClick={onBookings} className="min-h-[52px] w-full rounded-2xl">
+        <div className="mt-7 grid gap-3">
+          <Button onClick={onBookings} className="min-h-[60px] w-full rounded-2xl text-base">
             <Icon name="Calendar" className="h-5 w-5" />
             {t("viewMyBookings")}
           </Button>
-          <Button variant="secondary" onClick={onHome}>{t("bookAnother")}</Button>
+          <Button variant="secondary" onClick={onHome} className="min-h-[52px] text-base">
+            {t("bookAnother")}
+          </Button>
         </div>
       </div>
     </section>
