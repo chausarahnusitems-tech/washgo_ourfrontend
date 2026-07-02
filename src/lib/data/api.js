@@ -86,7 +86,7 @@ export async function rpcTopUp(supabase, amount, note = "Wallet top-up") {
   return unwrap(await supabase.rpc("top_up", { p_amount: amount, p_note: note }));
 }
 
-export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceIds, useVoucher, couponCode }) {
+export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceIds, useVoucher, couponCode, expectedPlate }) {
   return unwrap(
     await supabase.rpc("create_booking", {
       p_shop_id: shopId,
@@ -94,7 +94,8 @@ export async function rpcCreateBooking(supabase, { shopId, date, slot, serviceId
       p_slot: slot,
       p_service_ids: serviceIds,
       p_use_voucher: Boolean(useVoucher),
-      p_coupon_code: couponCode || null
+      p_coupon_code: couponCode || null,
+      p_expected_plate: expectedPlate || null
     })
   );
 }
@@ -119,6 +120,22 @@ export async function fetchCoupon(supabase, code) {
     amountOff: data.amount_off ?? 0,
     description: data.description ?? ""
   };
+}
+
+// Upload a customer's vehicle photo to the public vehicle-photos bucket under
+// '<userId>/...' (storage RLS namespaces writes by user id, the first path
+// segment). Distinct timestamped filename so a re-upload never collides.
+// Returns the public URL — stored on the saved vehicle profile (profiles.vehicle).
+export async function uploadVehiclePhoto(supabase, userId, file) {
+  const ext = (file.name?.split(".").pop() || "jpg").toLowerCase();
+  const rand = Math.random().toString(36).slice(2, 8);
+  const path = `${userId}/vehicle-${Date.now()}-${rand}.${ext}`;
+  const { error } = await supabase.storage
+    .from("vehicle-photos")
+    .upload(path, file, { upsert: false, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("vehicle-photos").getPublicUrl(path);
+  return `${pub.publicUrl}?t=${Date.now()}`;
 }
 
 export async function rpcUpdateBooking(supabase, { bookingId, date, slot, serviceIds }) {
@@ -709,6 +726,20 @@ export async function setSlotOverride(supabase, shopId, date, { isClosed, maxCar
 export async function deleteSlotOverride(supabase, shopId, date) {
   return unwrap(
     await supabase.from("shop_slot_overrides").delete().eq("shop_id", shopId).eq("date", date)
+  );
+}
+
+// Close (or reopen) a whole date range for a shop in one call — e.g. a holiday
+// shutdown. Owner-scoped SECURITY DEFINER RPC; closures are enforced by the
+// booking RPCs (a closed day blocks bookings). Returns the number of days set.
+export async function setShopClosedRange(supabase, shopId, fromIso, toIso, closed = true) {
+  return unwrap(
+    await supabase.rpc("set_shop_closed_range", {
+      p_shop_id: shopId,
+      p_from: fromIso,
+      p_to: toIso,
+      p_closed: closed
+    })
   );
 }
 

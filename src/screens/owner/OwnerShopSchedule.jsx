@@ -6,6 +6,7 @@ import { createClient } from "../../lib/supabase/client.js";
 import {
   deleteSlotOverride,
   fetchSlotOverrides,
+  setShopClosedRange,
   setSlotOverride
 } from "../../lib/data/api.js";
 import {
@@ -36,6 +37,8 @@ export function OwnerShopSchedule({ shop, update }) {
   const [selected, setSelected] = useState(null); // iso date the owner tapped
   const [mode, setMode] = useState("closed"); // "closed" | "cap"
   const [cap, setCap] = useState(1);
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
 
   async function reload() {
     setLoading(true);
@@ -97,6 +100,23 @@ export function OwnerShopSchedule({ shop, update }) {
     }
   }
 
+  // Close (or reopen) a whole date range at once — e.g. a holiday shutdown.
+  async function applyRange(closed) {
+    if (!rangeFrom || !rangeTo) return;
+    setBusy(true);
+    try {
+      await setShopClosedRange(supabase, shop.id, rangeFrom, rangeTo, closed);
+      setRangeFrom("");
+      setRangeTo("");
+      await reload();
+    } catch (err) {
+      console.error("[washgo] set closed range failed", err);
+      window.alert(err?.message || "Could not update the closure.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function pickDay(iso) {
     const existing = byDate.get(iso);
     setSelected(iso);
@@ -121,6 +141,47 @@ export function OwnerShopSchedule({ shop, update }) {
         Normal capacity is <strong>{shop.max_cars_per_slot ?? 1}</strong> car(s) per slot. Tap a date
         to close the shop or set a custom limit — these override the normal limit.
       </p>
+
+      {/* Close the shop across a whole date range (e.g. a holiday). */}
+      <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
+        <h4 className="text-sm font-black text-ink">Close for a period</h4>
+        <p className="mt-0.5 text-xs text-neutral-500">
+          Close the shop across a date range (holidays, maintenance). Bookings are blocked on those days.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-neutral-500">From</span>
+            <input
+              type="date"
+              value={rangeFrom}
+              min={todayIso}
+              onChange={(e) => setRangeFrom(e.target.value)}
+              className="min-h-11 rounded-2xl border border-black/10 px-3 text-sm outline-none focus:border-wash-500"
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-neutral-500">To</span>
+            <input
+              type="date"
+              value={rangeTo}
+              min={rangeFrom || todayIso}
+              onChange={(e) => setRangeTo(e.target.value)}
+              className="min-h-11 rounded-2xl border border-black/10 px-3 text-sm outline-none focus:border-wash-500"
+            />
+          </label>
+          <Button onClick={() => applyRange(true)} disabled={busy || !rangeFrom || !rangeTo} className="min-h-11">
+            Close shop
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => applyRange(false)}
+            disabled={busy || !rangeFrom || !rangeTo}
+            className="min-h-11"
+          >
+            Reopen
+          </Button>
+        </div>
+      </div>
 
       <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4">
         {/* Month switcher */}

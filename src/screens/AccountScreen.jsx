@@ -289,7 +289,15 @@ function VehicleCard() {
         </Button>
       </div>
       <div className="mt-4 flex items-center gap-4">
-        <BrandLogo brand={brand} size={72} />
+        {vehicle.photoUrl ? (
+          <img
+            src={vehicle.photoUrl}
+            alt={vehicle.model || t("myVehicle")}
+            className="h-[72px] w-[72px] shrink-0 rounded-2xl object-cover ring-1 ring-black/10"
+          />
+        ) : (
+          <BrandLogo brand={brand} size={72} />
+        )}
         <div className="min-w-0">
           <strong className="block truncate font-display text-lg font-black">
             {vehicle.model || t("notSet")}
@@ -506,7 +514,7 @@ function AccountMobile({ state, t, isSignedIn, isMember, membershipUntil, showTr
               </span>
               <strong className="block text-2xl">{formatVnd(state.funds)}</strong>
             </div>
-            <Button onClick={onTopUp} className="min-h-9 px-4 text-sm">
+            <Button onClick={onTopUp} className="min-h-9 shrink-0 whitespace-nowrap px-4 text-sm">
               <Icon name="Plus" className="h-4 w-4" />
               {t("topUp")}
             </Button>
@@ -585,7 +593,7 @@ function AccountDesktop({ state, t, isSignedIn, isMember, membershipUntil, showT
                   </span>
                   <strong className="block text-2xl font-black">{formatVnd(state.funds)}</strong>
                 </div>
-                <Button onClick={onTopUp} className="min-h-9 px-4 text-sm">
+                <Button onClick={onTopUp} className="min-h-9 shrink-0 whitespace-nowrap px-4 text-sm">
                   <Icon name="Plus" className="h-4 w-4" />
                   {t("topUp")}
                 </Button>

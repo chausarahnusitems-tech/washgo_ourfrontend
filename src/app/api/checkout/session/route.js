@@ -96,7 +96,8 @@ export async function POST(req) {
         p_date: body.date,
         p_slot: body.slot,
         p_service_ids: body.serviceIds,
-        p_coupon_code: body.couponCode || null
+        p_coupon_code: body.couponCode || null,
+        p_expected_plate: body.expectedPlate || null
       });
       if (rpcErr) {
         // Domain-level validation failure (slot full, coupon used, closed, …).

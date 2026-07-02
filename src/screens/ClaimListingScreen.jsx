@@ -12,6 +12,7 @@ import { useGeolocation } from "../lib/useGeolocation.js";
 import { InteractiveMap } from "../components/map/InteractiveMapDynamic.jsx";
 import { AddressSearch } from "../components/owner/AddressSearch.jsx";
 import { Button } from "../components/ui/Button.jsx";
+import { DISTRICTS } from "../data/districts.js";
 import { cx } from "../lib/cx.js";
 
 const inputClass =
@@ -275,18 +276,24 @@ export function ClaimListingScreen({ shopId = null, isNew = false }) {
               setCoords({ lat, lng });
             }}
           />
-          <input
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Street address"
-            className={cx(inputClass, "mt-2")}
-          />
-          <input
+          {address ? (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-neutral-500">
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 break-words">{address}</span>
+            </p>
+          ) : null}
+          <select
             value={district}
             onChange={(e) => setDistrict(e.target.value)}
-            placeholder="Area / District (optional)"
             className={cx(inputClass, "mt-2")}
-          />
+          >
+            <option value="">Select district (optional)</option>
+            {DISTRICTS.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
           <div className="mt-3 overflow-hidden rounded-2xl border border-black/10">
             <InteractiveMap
               className="h-64 w-full"
@@ -295,6 +302,7 @@ export function ClaimListingScreen({ shopId = null, isNew = false }) {
               onPick={(lat, lng) => setCoords({ lat, lng })}
               userLocation={liveLocation}
               showRecenter
+              recenterLabel="Recenter"
             />
           </div>
           {coords ? (

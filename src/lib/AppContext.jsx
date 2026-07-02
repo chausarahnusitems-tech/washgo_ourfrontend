@@ -492,7 +492,17 @@ export function AppProvider({ children }) {
       setState((prev) => ({ ...prev, funds: funds ?? prev.funds, selectedPlan: "premium" }));
       setAuth((prev) =>
         prev.profile
-          ? { ...prev, profile: { ...prev.profile, funds, selected_plan: "premium", membership_until } }
+          ? {
+              ...prev,
+              profile: {
+                ...prev.profile,
+                funds,
+                selected_plan: "premium",
+                membership_until,
+                membership_auto_renew: true,
+                membership_grace_until: null
+              }
+            }
           : prev
       );
       await refreshTransactions();
@@ -503,10 +513,43 @@ export function AppProvider({ children }) {
     }
   }, [demo, supabase, auth.user, refreshTransactions]);
 
+  // Manual cancel / resume of auto-renewal. Cancel keeps the perks until
+  // membership_until (then the daily renewal job lapses it to basic); resume
+  // re-arms the automatic monthly charge. Demo has no DB membership, so it just
+  // reflects the toggle locally.
+  const setMembershipAutoRenew = useCallback(
+    async (on) => {
+      if (demo) {
+        setAuth((prev) =>
+          prev.profile
+            ? { ...prev, profile: { ...prev.profile, membership_auto_renew: Boolean(on) } }
+            : prev
+        );
+        return true;
+      }
+      if (!supabase || !auth.user) return false;
+      try {
+        const res = await supabase.rpc("set_membership_auto_renew", { p_on: Boolean(on) });
+        if (res.error) throw res.error;
+        const next = res.data?.membership_auto_renew ?? Boolean(on);
+        setAuth((prev) =>
+          prev.profile
+            ? { ...prev, profile: { ...prev.profile, membership_auto_renew: next } }
+            : prev
+        );
+        return true;
+      } catch (error) {
+        console.error("[washgo] set_membership_auto_renew failed", error);
+        return false;
+      }
+    },
+    [demo, supabase, auth.user]
+  );
+
   // ---- Bookings -----------------------------------------------------------
 
   const confirmBooking = useCallback(
-    async (shopId, serviceIdsArg) => {
+    async (shopId, serviceIdsArg, opts = {}) => {
       if (demo) {
         let ok = false;
         setState((prev) => {
@@ -586,7 +629,10 @@ export function AppProvider({ children }) {
           slot: state.selectedTime,
           serviceIds,
           useVoucher,
-          couponCode: useVoucher ? null : state.promo?.code
+          couponCode: useVoucher ? null : state.promo?.code,
+          // Plate entered on the booking form; recorded on the booking so the
+          // owner's completion scan verifies against the right car.
+          expectedPlate: opts.expectedPlate || null
         });
         const bookings = await fetchBookings(supabase, auth.user.id);
         const booking = bookings.find((b) => b.id === res.booking_id) ?? bookings[0] ?? null;
@@ -919,6 +965,7 @@ export function AppProvider({ children }) {
       setSelectedPlan,
       topUpFunds,
       startMembership,
+      setMembershipAutoRenew,
       setVehicle,
       toggleService,
       setDate,
@@ -957,6 +1004,7 @@ export function AppProvider({ children }) {
       setSelectedPlan,
       topUpFunds,
       startMembership,
+      setMembershipAutoRenew,
       setVehicle,
       toggleService,
       setDate,

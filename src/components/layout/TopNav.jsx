@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { icons as svgIcons } from "../../assets.js";
 import { cx } from "../../lib/cx.js";
 import { useApp } from "../../lib/AppContext.jsx";
+import { useChatBadge } from "../../lib/useChatBadge.js";
 import { Icon } from "../ui/Icon.jsx";
 
 // Desktop top-nav highlight, keyed off the current route.
@@ -21,6 +22,7 @@ export function TopNav({ className }) {
   const { t, auth } = useApp();
   const pathname = usePathname();
   const active = activeKey(pathname);
+  const chatUnread = useChatBadge();
 
   const isSignedIn = Boolean(auth?.user);
   const displayName = isSignedIn ? auth.profile?.full_name || auth.user.email : null;
@@ -52,7 +54,14 @@ export function TopNav({ className }) {
                   active === link.key ? "font-black text-wash-500" : "font-semibold text-ink"
                 )}
               >
-                {link.label}
+                <span className="inline-flex items-center gap-1.5">
+                  {link.label}
+                  {link.key === "chat" && chatUnread > 0 ? (
+                    <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-wash-500 px-1 text-[0.62rem] font-black leading-none text-white">
+                      {chatUnread > 9 ? "9+" : chatUnread}
+                    </span>
+                  ) : null}
+                </span>
               </Link>
             ) : (
               <button

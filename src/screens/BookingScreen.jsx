@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { images } from "../assets.js";
 import { times } from "../data/catalog.js";
@@ -20,7 +20,7 @@ import {
 import { addMonths, buildMonthGrid, formatMonthLabel, resolveBookingIso, toIsoDate, WEEKDAYS_SHORT } from "../lib/calendar.js";
 import { useApp } from "../lib/AppContext.jsx";
 import { createClient } from "../lib/supabase/client.js";
-import { fetchSlotAvailability } from "../lib/data/api.js";
+import { fetchSlotAvailability, uploadVehiclePhoto } from "../lib/data/api.js";
 import { startCheckout } from "../lib/data/billing.js";
 import { useBackOr } from "../lib/useBackOr.js";
 import { Button } from "../components/ui/Button.jsx";
@@ -32,7 +32,7 @@ export function BookingScreen({ shopId }) {
   const router = useRouter();
   const onBack = useBackOr("/explore");
   const supabase = useMemo(() => createClient(), []);
-  const { t, state, catalog, mode, auth, requireAuth, promo, applyPromo, clearPromo, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle: onVehicle, confirmBooking } = useApp();
+  const { t, state, catalog, mode, auth, requireAuth, promo, applyPromo, clearPromo, setDate: onDate, setTime: onTime, toggleService: onService, setVehicle, confirmBooking } = useApp();
 
   // Promo/referral code entry (item 4).
   const [promoInput, setPromoInput] = useState("");
@@ -60,6 +60,15 @@ export function BookingScreen({ shopId }) {
   const [bookError, setBookError] = useState(null);
   // Per-slot availability for the picked date (counts + cap + closed-day flag).
   const [availability, setAvailability] = useState(null);
+  // Vehicle: the booking form keeps a LOCAL copy seeded from the saved vehicle so
+  // editing here doesn't silently overwrite the saved profile — the "save" toggle
+  // (below) controls whether it's remembered. Model + plate are compulsory.
+  const [vehicleForm, setVehicleForm] = useState({ model: "", plate: "", notes: "", photoUrl: "" });
+  const [saveVehicle, setSaveVehicle] = useState(true);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState(null);
+  const vehicleFileRef = useRef(null);
+  const vehicleSeededRef = useRef(false);
 
   // Resolve from the same live catalog the rest of the screen reads, so a valid
   // DB shop isn't briefly mistaken for not-found on a deep link.
@@ -97,6 +106,22 @@ export function BookingScreen({ shopId }) {
       active = false;
     };
   }, [mode, supabase, shop?.id, isoDate]);
+
+  // Autofill the vehicle fields from the saved profile vehicle once it loads (and
+  // only while the form is still untouched, so we never clobber what the user typed).
+  useEffect(() => {
+    if (vehicleSeededRef.current) return;
+    const v = state.vehicle;
+    if (v && (v.model || v.plate || v.photoUrl)) {
+      setVehicleForm({
+        model: v.model || "",
+        plate: v.plate || "",
+        notes: v.notes || "",
+        photoUrl: v.photoUrl || ""
+      });
+      vehicleSeededRef.current = true;
+    }
+  }, [state.vehicle]);
 
   // True when a slot is at capacity for the picked date.
   const slotFull = (time) =>
@@ -217,16 +242,65 @@ export function BookingScreen({ shopId }) {
     bookableServices.some((s) => s.id === id)
   );
 
+  // --- Vehicle (compulsory details + photo + save-to-profile) --------------
+  const savedVehicle = state.vehicle ?? {};
+  const hasSavedVehicle = Boolean((savedVehicle.model || "").trim() || (savedVehicle.plate || "").trim());
+  // A wash needs to know which car it's for — block submit until model + plate are filled.
+  const vehicleComplete = Boolean(vehicleForm.model.trim() && vehicleForm.plate.trim());
+  const setVehicleField = (patch) => setVehicleForm((prev) => ({ ...prev, ...patch }));
+  const applySavedVehicle = () =>
+    setVehicleForm({
+      model: savedVehicle.model || "",
+      plate: savedVehicle.plate || "",
+      notes: savedVehicle.notes || "",
+      photoUrl: savedVehicle.photoUrl || ""
+    });
+  // Merge over the saved vehicle so fields we don't edit here (e.g. brand) survive.
+  const buildVehiclePayload = () => ({
+    ...savedVehicle,
+    model: vehicleForm.model.trim(),
+    plate: vehicleForm.plate.trim(),
+    notes: vehicleForm.notes,
+    photoUrl: vehicleForm.photoUrl || null
+  });
+
+  async function onVehiclePhoto(event) {
+    const file = event.target.files?.[0];
+    if (event.target) event.target.value = "";
+    if (!file || !auth.user) return; // photo upload needs a signed-in (backend) user
+    setPhotoError(null);
+    setPhotoBusy(true);
+    try {
+      const url = await uploadVehiclePhoto(supabase, auth.user.id, file);
+      setVehicleField({ photoUrl: url });
+    } catch (err) {
+      console.error("[washgo] vehicle photo upload failed", err);
+      setPhotoError(t("vehiclePhotoFailed"));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
   const onConfirm = async () => {
     if (submitting) return;
     if (requireAuth) {
       router.push("/login");
       return;
     }
+    if (!vehicleComplete) {
+      setBookError(t("vehicleRequired"));
+      return;
+    }
     setSubmitting(true);
     setBookError(null);
-    const ok = await confirmBooking(shop.id, effectiveSelected);
+    const next = buildVehiclePayload();
+    // The plate is recorded on the booking directly (p_expected_plate), so it's
+    // correct whether or not the user saves the vehicle to their profile.
+    const ok = await confirmBooking(shop.id, effectiveSelected, { expectedPlate: next.plate });
     if (ok) {
+      // Remember the vehicle for next time only if opted in (setVehicle persists
+      // it to the profile in backend mode via AppContext's vehicle effect).
+      if (saveVehicle) setVehicle(next);
       router.push("/confirmation");
       return; // leave the button disabled while we navigate away
     }
@@ -243,8 +317,16 @@ export function BookingScreen({ shopId }) {
       router.push("/login");
       return;
     }
+    if (!vehicleComplete) {
+      setBookError(t("vehicleRequired"));
+      return;
+    }
     setSubmitting(true);
     setBookError(null);
+    const next = buildVehiclePayload();
+    // The entered plate is sent through to the pending booking, so it's recorded
+    // regardless of the save toggle; remember the vehicle for next time if opted in.
+    if (saveVehicle) setVehicle(next);
     const err = await startCheckout({
       kind: "booking",
       shopId: shop.id,
@@ -252,6 +334,7 @@ export function BookingScreen({ shopId }) {
       slot: state.selectedTime,
       serviceIds: effectiveSelected,
       couponCode: promo?.code || null,
+      expectedPlate: next.plate,
       next: `/shops/${shop.id}/book`
     });
     if (err) {
@@ -333,10 +416,12 @@ export function BookingScreen({ shopId }) {
               </span>
             ))}
             {grid.map((cell) => {
+              // Out-of-month days render as blanks so only the viewed month shows.
+              if (cell.muted) return <span key={cell.iso} aria-hidden="true" className="min-h-7" />;
               const selected =
                 cell.iso === state.selectedDate ||
                 (state.selectedDate === "today" && cell.iso === todayIso);
-              const disabled = cell.muted || cell.past || isWeeklyClosed(shop, cell.iso);
+              const disabled = cell.past || isWeeklyClosed(shop, cell.iso);
               return (
                 <button
                   key={cell.iso}
@@ -454,33 +539,105 @@ export function BookingScreen({ shopId }) {
         </section>
 
         <section className="mt-3 rounded-xl border border-black/20 bg-white p-3">
-          <h2 className="font-display text-base font-black">{t("vehicleDetails")}</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-display text-base font-black">{t("vehicleDetails")}</h2>
+            {hasSavedVehicle ? (
+              <button
+                type="button"
+                onClick={applySavedVehicle}
+                className="inline-flex items-center gap-1 text-xs font-bold text-wash-600 hover:underline"
+              >
+                <Icon name="Car" className="h-3.5 w-3.5" />
+                {t("useSavedVehicle")}
+              </button>
+            ) : null}
+          </div>
+
           <label className="mt-3 block">
-            <span className="text-xs font-bold text-neutral-500">{t("vehicleModel")}</span>
+            <span className="text-xs font-bold text-neutral-500">{t("vehicleModel")} *</span>
             <CarModelPicker
-              value={state.vehicle.model}
-              onSelect={(model) => onVehicle({ model })}
+              value={vehicleForm.model}
+              onSelect={(model) => setVehicleField({ model })}
               t={t}
               placeholder={t("searchCarModel")}
             />
           </label>
           <label className="mt-3 block">
-            <span className="text-xs font-bold text-neutral-500">{t("licensePlate")}</span>
+            <span className="text-xs font-bold text-neutral-500">{t("licensePlate")} *</span>
             <input
-              value={state.vehicle.plate}
-              onChange={(event) => onVehicle({ plate: event.target.value })}
+              value={vehicleForm.plate}
+              onChange={(event) => setVehicleField({ plate: event.target.value })}
               className="mt-1 min-h-11 w-full rounded-xl border border-black/10 bg-neutral-100 px-3 outline-none focus:ring-4 focus:ring-wash-500/20"
             />
           </label>
+
+          {/* Vehicle photo (optional, backend only — needs storage). */}
+          {auth?.user ? (
+          <div className="mt-3">
+            <span className="text-xs font-bold text-neutral-500">{t("vehiclePhoto")}</span>
+            <input ref={vehicleFileRef} type="file" accept="image/*" className="hidden" onChange={onVehiclePhoto} />
+            {vehicleForm.photoUrl ? (
+              <div className="mt-1 flex items-center gap-3">
+                <img
+                  src={vehicleForm.photoUrl}
+                  alt={t("vehiclePhoto")}
+                  className="h-16 w-16 rounded-xl object-cover ring-1 ring-black/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => vehicleFileRef.current?.click()}
+                  disabled={photoBusy}
+                  className="text-xs font-bold text-wash-600 hover:underline disabled:opacity-50"
+                >
+                  {photoBusy ? t("cfmUploading") : t("changePhoto")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVehicleField({ photoUrl: "" })}
+                  className="text-xs font-semibold text-neutral-500 hover:underline"
+                >
+                  {t("removePhoto")}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => vehicleFileRef.current?.click()}
+                disabled={photoBusy}
+                className="mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-black/20 bg-neutral-50 text-sm font-bold text-neutral-500 disabled:opacity-50"
+              >
+                <Icon name="ImagePlus" className="h-4 w-4" />
+                {photoBusy ? t("cfmUploading") : t("addVehiclePhoto")}
+              </button>
+            )}
+            {photoError ? <p className="mt-1 text-xs font-bold text-red-600">{photoError}</p> : null}
+          </div>
+          ) : null}
+
           <label className="mt-3 block">
             <span className="text-xs font-bold text-neutral-500">{t("notes")}</span>
             <textarea
-              value={state.vehicle.notes}
-              onChange={(event) => onVehicle({ notes: event.target.value })}
+              value={vehicleForm.notes}
+              onChange={(event) => setVehicleField({ notes: event.target.value })}
               placeholder={t("notesPlaceholder")}
               className="mt-1 min-h-20 w-full resize-none rounded-xl border border-black/10 bg-neutral-100 p-3 outline-none focus:ring-4 focus:ring-wash-500/20"
             />
           </label>
+
+          {/* Save the entered vehicle to the profile so it autofills next time. */}
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-neutral-600">
+            <input
+              type="checkbox"
+              checked={saveVehicle}
+              onChange={(event) => setSaveVehicle(event.target.checked)}
+              className="h-4 w-4 accent-wash-500"
+            />
+            {t("saveVehicleProfile")}
+          </label>
+
+          {!vehicleComplete ? (
+            <p className="mt-2 text-xs font-bold text-amber-600">{t("vehicleRequiredHint")}</p>
+          ) : null}
         </section>
 
         <section className="mt-3 rounded-xl border border-black/20 bg-white p-3">
@@ -601,7 +758,7 @@ export function BookingScreen({ shopId }) {
             bottom padding below, so it reads as the end of the form. The wallet
             path pays from the balance; the card path (backend, charge > 0) hands
             off to the hosted PayOS checkout. */}
-        <Button onClick={onConfirm} disabled={!total || insufficient || submitting || dateClosed || !slotSelectable} className="mt-5 min-h-[54px] w-full rounded-full px-4">
+        <Button onClick={onConfirm} disabled={!total || insufficient || submitting || dateClosed || !slotSelectable || !vehicleComplete} className="mt-5 min-h-[54px] w-full rounded-full px-4">
           <Icon name="Calendar" className="h-5 w-5" />
           <span className="grid flex-1 text-left">
             <strong>{mode === "backend" && !redeeming && charge > 0 ? t("payFromWallet") : t("book")}</strong>
@@ -615,7 +772,7 @@ export function BookingScreen({ shopId }) {
             type="button"
             variant="secondary"
             onClick={onPayCard}
-            disabled={submitting || dateClosed || !slotSelectable}
+            disabled={submitting || dateClosed || !slotSelectable || !vehicleComplete}
             className="mt-3 min-h-[54px] w-full rounded-full px-4"
           >
             <Icon name="WalletCards" className="h-5 w-5" />

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../lib/AppContext.jsx";
+import { createClient } from "../../lib/supabase/client.js";
+import { uploadVehiclePhoto } from "../../lib/data/api.js";
 import { BRAND_NAMES, brandFromModel, modelsForBrand } from "../../data/carBrands.js";
 import { Modal } from "../ui/Modal.jsx";
 import { Button } from "../ui/Button.jsx";
@@ -13,12 +15,16 @@ import { cx } from "../../lib/cx.js";
 // choose/type a series, and set the plate. Writes to `state.vehicle` (and the
 // profile's car_model column in backend mode) on save.
 export function VehicleEditModal({ open, onClose }) {
-  const { t, state, mode, setVehicle, updateProfile } = useApp();
+  const { t, state, mode, auth, setVehicle, updateProfile } = useApp();
+  const supabase = useMemo(() => createClient(), []);
   const [brand, setBrand] = useState("");
   const [series, setSeries] = useState("");
   const [plate, setPlate] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
 
   // Seed the fields from the current vehicle each time the modal opens, deriving
   // the brand from the stored model when it wasn't saved explicitly (legacy data).
@@ -34,6 +40,7 @@ export function VehicleEditModal({ open, onClose }) {
     setBrand(derivedBrand);
     setSeries(derivedSeries);
     setPlate(vehicle.plate ?? "");
+    setPhotoUrl(vehicle.photoUrl ?? "");
     setBrandOpen(false);
     setSaving(false);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -41,9 +48,24 @@ export function VehicleEditModal({ open, onClose }) {
   const models = modelsForBrand(brand);
   const composedModel = [brand, series.trim()].filter(Boolean).join(" ");
 
+  async function onPickPhoto(event) {
+    const file = event.target.files?.[0];
+    if (event.target) event.target.value = "";
+    if (!file || !auth?.user) return; // upload needs a signed-in (backend) user
+    setPhotoBusy(true);
+    try {
+      const url = await uploadVehiclePhoto(supabase, auth.user.id, file);
+      setPhotoUrl(url);
+    } catch (err) {
+      console.error("[washgo] vehicle photo upload failed", err);
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
   async function save() {
     setSaving(true);
-    setVehicle({ brand, model: composedModel, plate: plate.trim() });
+    setVehicle({ brand, model: composedModel, plate: plate.trim(), photoUrl: photoUrl || null });
     if (mode === "backend") {
       try {
         await updateProfile({ car_model: composedModel });
@@ -73,7 +95,11 @@ export function VehicleEditModal({ open, onClose }) {
 
       {/* Live preview */}
       <div className="mt-4 flex items-center gap-3 rounded-2xl bg-neutral-50 p-3">
-        <BrandLogo brand={brand} size={56} />
+        {photoUrl ? (
+          <img src={photoUrl} alt={composedModel || t("myVehicle")} className="h-14 w-14 shrink-0 rounded-xl object-cover ring-1 ring-black/10" />
+        ) : (
+          <BrandLogo brand={brand} size={56} />
+        )}
         <div className="min-w-0">
           <strong className="block truncate font-display text-base font-black">
             {composedModel || t("notSet")}
@@ -163,6 +189,44 @@ export function VehicleEditModal({ open, onClose }) {
         placeholder={t("licensePlate")}
         className="mt-1 min-h-11 w-full rounded-2xl border border-black/10 bg-white px-3 text-sm outline-none focus:border-wash-500"
       />
+
+      {/* Vehicle photo (backend only — needs storage). */}
+      {auth?.user ? (
+        <>
+          <label className="mt-3 block text-sm font-semibold text-neutral-600">{t("vehiclePhoto")}</label>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickPhoto} />
+          {photoUrl ? (
+            <div className="mt-1 flex items-center gap-3">
+              <img src={photoUrl} alt={t("vehiclePhoto")} className="h-16 w-16 rounded-xl object-cover ring-1 ring-black/10" />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={photoBusy}
+                className="text-xs font-bold text-wash-600 hover:underline disabled:opacity-50"
+              >
+                {photoBusy ? t("cfmUploading") : t("changePhoto")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhotoUrl("")}
+                className="text-xs font-semibold text-neutral-500 hover:underline"
+              >
+                {t("removePhoto")}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={photoBusy}
+              className="mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-black/15 bg-white text-sm font-bold text-neutral-500 disabled:opacity-50"
+            >
+              <Icon name="ImagePlus" className="h-4 w-4" />
+              {photoBusy ? t("cfmUploading") : t("addVehiclePhoto")}
+            </button>
+          )}
+        </>
+      ) : null}
 
       <div className="mt-5 flex items-center justify-end gap-2">
         <Button variant="ghost" onClick={onClose} className="min-h-10 px-4 text-sm">

@@ -29,6 +29,13 @@ export const copy = {
     yourCoupons: "Your coupons",
     joinMembership: "Join membership",
     renewMembership: "Renew membership",
+    autoRenewOn: "Auto-renews monthly",
+    autoRenewOff: "Auto-renew off",
+    cancelAutoRenew: "Cancel auto-renewal",
+    resumeAutoRenew: "Resume auto-renewal",
+    autoRenewBilling: "Renews automatically from your wallet. We'll email you to top up if your balance runs low.",
+    autoRenewEndsOn: "Won't renew — you'll keep your perks until",
+    cancelAutoRenewConfirm: "Turn off auto-renewal? You'll keep your membership perks until it expires, but it won't renew.",
     membershipError: "Couldn't start membership — please try again.",
     signInToJoin: "Sign in to join",
     payTopUp: "Top up wallet",
@@ -493,7 +500,16 @@ export const copy = {
     openClear: "Open / clear",
     tapDateToClose: "Tap a date to close the shop or set a custom limit.",
     closedLegend: "Red = closed",
-    customLegend: "Amber = custom limit"
+    customLegend: "Amber = custom limit",
+    // --- Booking vehicle (compulsory + photo + save/autofill) & support cap ---
+    useSavedVehicle: "Use my saved vehicle",
+    vehiclePhoto: "Vehicle photo",
+    addVehiclePhoto: "Add a photo",
+    vehiclePhotoFailed: "Couldn't upload the photo. Please try again.",
+    saveVehicleProfile: "Save this vehicle to my profile for next time",
+    vehicleRequired: "Please add your car model and license plate first.",
+    vehicleRequiredHint: "Add your car model and license plate to continue.",
+    supportChatLimit: "You can have up to 5 open support chats. Close one to start a new one."
   },
   vi: {
     signInToContinue: "Đăng nhập để tiếp tục",
@@ -525,6 +541,13 @@ export const copy = {
     yourCoupons: "Phiếu giảm giá của bạn",
     joinMembership: "Tham gia hội viên",
     renewMembership: "Gia hạn hội viên",
+    autoRenewOn: "Tự động gia hạn hàng tháng",
+    autoRenewOff: "Đã tắt tự động gia hạn",
+    cancelAutoRenew: "Hủy tự động gia hạn",
+    resumeAutoRenew: "Bật lại tự động gia hạn",
+    autoRenewBilling: "Tự động gia hạn từ ví của bạn. Chúng tôi sẽ gửi email nhắc nạp tiền nếu số dư thấp.",
+    autoRenewEndsOn: "Sẽ không gia hạn — bạn vẫn giữ đặc quyền đến",
+    cancelAutoRenewConfirm: "Tắt tự động gia hạn? Bạn vẫn giữ đặc quyền hội viên đến khi hết hạn, nhưng sẽ không gia hạn.",
     membershipError: "Không thể kích hoạt hội viên — vui lòng thử lại.",
     signInToJoin: "Đăng nhập để tham gia",
     payTopUp: "Nạp ví",
@@ -988,6 +1011,15 @@ export const copy = {
     openClear: "Mở / xóa",
     tapDateToClose: "Chạm vào ngày để đóng cửa hoặc đặt giới hạn riêng.",
     closedLegend: "Đỏ = đóng cửa",
-    customLegend: "Vàng = giới hạn riêng"
+    customLegend: "Vàng = giới hạn riêng",
+    // --- Booking vehicle (compulsory + photo + save/autofill) & support cap ---
+    useSavedVehicle: "Dùng xe đã lưu",
+    vehiclePhoto: "Ảnh xe",
+    addVehiclePhoto: "Thêm ảnh",
+    vehiclePhotoFailed: "Không tải được ảnh. Vui lòng thử lại.",
+    saveVehicleProfile: "Lưu xe này vào hồ sơ cho lần sau",
+    vehicleRequired: "Vui lòng thêm dòng xe và biển số trước.",
+    vehicleRequiredHint: "Thêm dòng xe và biển số để tiếp tục.",
+    supportChatLimit: "Bạn có thể mở tối đa 5 cuộc trò chuyện hỗ trợ. Hãy đóng một cuộc để mở mới."
   }
 };
