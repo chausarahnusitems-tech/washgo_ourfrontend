@@ -363,6 +363,9 @@ export const copy = {
     closeChat: "Close chat",
     chatClosed: "This conversation is closed.",
     confirmCloseChat: "Close this conversation? It can't be reopened and no new messages can be sent.",
+    washCompletePrompt: "Your wash is complete. Would you like to close this chat?",
+    keepChatOpen: "Keep open",
+    closeChatNote: "It can't be reopened and no new messages can be sent.",
     // Post-close review
     rateExperience: "How was your support experience?",
     reviewComment: "Add a comment (optional)",
@@ -875,6 +878,9 @@ export const copy = {
     closeChat: "Đóng cuộc trò chuyện",
     chatClosed: "Cuộc trò chuyện này đã đóng.",
     confirmCloseChat: "Đóng cuộc trò chuyện này? Không thể mở lại và không thể gửi tin nhắn mới.",
+    washCompletePrompt: "Dịch vụ rửa xe đã hoàn tất. Bạn có muốn đóng cuộc trò chuyện này không?",
+    keepChatOpen: "Giữ mở",
+    closeChatNote: "Không thể mở lại và không thể gửi tin nhắn mới.",
     // Post-close review
     rateExperience: "Bạn đánh giá trải nghiệm hỗ trợ thế nào?",
     reviewComment: "Thêm nhận xét (không bắt buộc)",
