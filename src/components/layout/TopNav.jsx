@@ -37,12 +37,19 @@ export function TopNav({ className }) {
 
   return (
     <header className={cx("sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur", className)}>
-      <div className="mx-auto flex h-[68px] w-full max-w-[1400px] items-center gap-6 px-6 xl:px-10">
-        <Link href="/" aria-label={t("homeAria")} className="inline-flex shrink-0 items-center border-0 bg-transparent p-0">
-          <img src={svgIcons.washgoLogo} alt="Washgo" className="h-8 w-auto object-contain" />
+      {/* Logo, then the primary links left-aligned beside it, with the account
+          pushed to the right (ml-auto). A single row gap sets the logo-to-links
+          spacing — no doubled margin. */}
+      <div className="mx-auto flex h-[68px] w-full max-w-[1400px] items-center gap-8 px-6 xl:px-10">
+        <Link
+          href="/"
+          aria-label={t("homeAria")}
+          className="inline-flex shrink-0 items-center border-0 bg-transparent p-0"
+        >
+          <img src={svgIcons.washgoLogo} alt="Washgo" className="h-11 w-auto object-contain" />
         </Link>
 
-        <nav aria-label={t("primaryNav")} className="ml-6 flex items-center gap-7">
+        <nav aria-label={t("primaryNav")} className="flex items-center gap-7">
           {links.map((link) =>
             link.href ? (
               <Link

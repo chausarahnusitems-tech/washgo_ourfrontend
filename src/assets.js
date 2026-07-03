@@ -18,5 +18,5 @@ export const icons = {
   miniMapBase: "/icons/minmapbase.svg",
   more: "/icons/more.svg",
   premiumCareForCar: "/icons/premium-care-for-car.svg",
-  washgoLogo: "/icons/washgologo.svg"
+  washgoLogo: "/images/washgo-logo.png"
 };
