@@ -39,6 +39,7 @@ import { parseIsoDate } from "../../lib/calendar.js";
 import { tagLabel } from "./problemTags.js";
 import { SupportTagPicker } from "./SupportTagPicker.jsx";
 import { ConversationReviewPrompt } from "./ConversationReviewPrompt.jsx";
+import { ConversationClosePrompt } from "./ConversationClosePrompt.jsx";
 import { ReportDialog } from "./ReportDialog.jsx";
 import { VoiceMessage } from "./VoiceMessage.jsx";
 
@@ -124,6 +125,31 @@ function mmss(total) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Persisted (localStorage) set of conversation ids where the customer tapped
+// "Keep open" on the wash-complete prompt, so the choice survives reloads /
+// remounts instead of re-nagging them every session.
+const CLOSE_PROMPT_DISMISSED_KEY = "washgo:closePromptDismissed";
+
+function loadClosePromptDismissed() {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(CLOSE_PROMPT_DISMISSED_KEY);
+    const ids = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistClosePromptDismissed(ids) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CLOSE_PROMPT_DISMISSED_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
 // Shared chat UI for all roles: a conversation list + the selected thread + a
 // composer. RLS scopes which conversations load, so the same component serves
 // customers, owners and admins. Props tune the entry points.
@@ -150,6 +176,11 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [showArchived, setShowArchived] = useState(false);
   const [existingReview, setExistingReview] = useState(null);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [closingChat, setClosingChat] = useState(false);
+  // Conversation ids where the customer tapped "keep open" on the wash-complete
+  // prompt — hydrated from / persisted to localStorage (below) so it survives
+  // reloads rather than re-nagging every session.
+  const [closePromptDismissed, setClosePromptDismissed] = useState(() => new Set());
   // For a shop thread viewed by the shop OWNER (not the customer/creator): the
   // customer's name/phone, resolved via a SECURITY DEFINER RPC since profiles
   // RLS is self-only. Empty for the customer's own view or on error (the RPC
@@ -198,6 +229,15 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     !!activeConv && !isClosed && (isAdmin || activeConv.createdBy === uid || activeConv.kind === "shop");
   const canManage = !!activeConv && (isAdmin || activeConv.createdBy === uid);
   const isReviewTarget = isClosed && !isAdmin && activeConv?.createdBy === uid;
+  // Once the owner marks the wash complete, prompt the customer (the thread
+  // creator) to close their still-open booking chat — unless they've dismissed it.
+  const showClosePrompt =
+    !isClosed &&
+    !isAdmin &&
+    activeConv?.kind === "shop" &&
+    activeConv?.createdBy === uid &&
+    activeConv?.bookingStatus === "completed" &&
+    !closePromptDismissed.has(activeConv?.id);
   // The support side (an admin, or the shop owner on a shop chat) gets an issue
   // details panel. The thread creator (customer) doesn't.
   const canSeeDetails =
@@ -228,6 +268,12 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   useEffect(() => {
     if (initialConversationId) setActiveId(initialConversationId);
   }, [initialConversationId]);
+
+  // Hydrate persisted "keep open" dismissals on mount. Client-only: starts empty
+  // on the server / first render and fills in after mount, so no hydration mismatch.
+  useEffect(() => {
+    setClosePromptDismissed(loadClosePromptDismissed());
+  }, []);
 
   const reloadList = useCallback(async () => {
     if (!supabase || !uid) {
@@ -619,6 +665,30 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     }
   }
 
+  // Close from the wash-complete prompt. The prompt already asks the question, so
+  // this skips the extra window.confirm that onCloseChat uses.
+  async function onCloseFromPrompt() {
+    if (!activeConv || closingChat) return;
+    setClosingChat(true);
+    try {
+      await closeConversation(supabase, activeConv.id);
+      await reloadList();
+    } catch (err) {
+      console.error("[washgo] close conversation failed", err);
+    } finally {
+      setClosingChat(false);
+    }
+  }
+
+  function onDismissClosePrompt() {
+    if (!activeConv) return;
+    setClosePromptDismissed((prev) => {
+      const next = new Set(prev).add(activeConv.id);
+      persistClosePromptDismissed(next);
+      return next;
+    });
+  }
+
   async function onArchive(archived) {
     if (!activeConv) return;
     try {
@@ -927,7 +997,9 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                       (global) and hard-purge "for everyone"; everyone else gets a
                       local "delete from my list". */}
                   {!isClosed ? (
-                    canClose && (
+                    // Hidden while the wash-complete prompt is up so the customer
+                    // sees a single "Close chat" affordance (the prompt), not two.
+                    canClose && !showClosePrompt && (
                       <button type="button" onClick={onCloseChat} className={headerBtn}>
                         {t("closeChat")}
                       </button>
@@ -1125,6 +1197,14 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                 </div>
               </div>
             ) : (
+              <>
+                {showClosePrompt && (
+                  <ConversationClosePrompt
+                    onClose={onCloseFromPrompt}
+                    onDismiss={onDismissClosePrompt}
+                    busy={closingChat}
+                  />
+                )}
               <form onSubmit={onSend} className="border-t border-black/10 bg-white">
                 <div className="p-3">
                   {pendingFile &&
@@ -1198,6 +1278,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                   </div>
                 </div>
               </form>
+              </>
             )}
             </div>
             {canSeeDetails && showDetails && (

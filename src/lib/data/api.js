@@ -839,7 +839,7 @@ export async function fetchConversations(supabase, kind = null) {
     // conversation_reads is RLS-scoped to the caller, so the embed resolves to
     // the caller's own read mark (0 or 1 row) per conversation. bookings() (via
     // booking_id) carries the session a per-booking thread is about.
-    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time)")
+    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time, status)")
     .order("created_at", { ascending: false });
   if (kind) query = query.eq("kind", kind);
   const rows = unwrap(await query);
@@ -901,7 +901,10 @@ function mapConversationRow(r, person) {
     // Per-booking shop threads carry the booked session (null for other threads).
     bookingId: r.booking_id ?? null,
     bookingDate: r.bookings?.scheduled_date ?? null,
-    bookingSlot: r.bookings?.slot_time ?? null
+    bookingSlot: r.bookings?.slot_time ?? null,
+    // Booking lifecycle status so the chat can prompt the customer to close the
+    // thread once the wash is complete.
+    bookingStatus: r.bookings?.status ?? null
   };
 }
 
@@ -912,7 +915,7 @@ function mapConversationRow(r, person) {
 export async function fetchConversation(supabase, conversationId) {
   const { data, error } = await supabase
     .from("conversations")
-    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time)")
+    .select("*, shops(name), conversation_reads(last_read_at), bookings(scheduled_date, slot_time, status)")
     .eq("id", conversationId)
     .maybeSingle();
   if (error) throw error;
