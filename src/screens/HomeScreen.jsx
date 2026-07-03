@@ -193,10 +193,10 @@ function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, on
   // getShopById returns null for a stale/unknown shop id (e.g. backend mode).
   const previous = getPreviousBooking(state.bookings);
   const previousShop = previous ? getShopById(previous.shopId) : null;
-  // Quick Actions offers two shortcuts side by side: a one-tap rebook of the last
-  // shop (when there's history) AND the single nearest bookable car wash. The
-  // nearest excludes the rebook shop so the two suggestions never point at the same
-  // place; `closestIsNearby` flags the "right next to you" (<1km) case for emphasis.
+  // Quick Actions surfaces the single nearest bookable car wash. It excludes the
+  // previous-booking shop (already offered for rebooking in the Previous Booking
+  // card) so the two cards never point at the same place; `closestIsNearby` flags
+  // the "right next to you" (<1km) case for emphasis.
   const closestBookable =
     byDistance.find((shop) => shop.listingType !== "directory" && shop.id !== previous?.shopId) ?? null;
   const closestIsNearby = closestBookable ? distanceOf(closestBookable) < 1 : false;
@@ -309,14 +309,6 @@ function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, on
           <DashCard>
             <CardHeader title={t("quickActions")} />
             <div className="mt-3 grid gap-3">
-              {/* Returning users: one-tap rebook of their last shop. */}
-              {previous ? (
-                <Button onClick={() => onRebookShop(previous.shopId)}>
-                  <Icon name="RotateCcw" className="h-5 w-5" />
-                  {t("rebook")}
-                </Button>
-              ) : null}
-
               {/* The single nearest bookable car wash — always offered as a quick
                   way to get a wash close by, with a badge when it's right nearby. */}
               {closestBookable ? (
@@ -333,18 +325,16 @@ function HomeDesktop({ state, allShops, t, isMember, membershipUntil, onShop, on
                     ) : null}
                   </div>
                   <ShopCard shop={closestBookable} t={t} onSelect={onShop} />
-                  <Button
-                    variant={previous ? "secondary" : "primary"}
-                    onClick={() => onBookShop(closestBookable.id)}
-                  >
+                  <Button onClick={() => onBookShop(closestBookable.id)}>
                     <Icon name="Car" className="h-5 w-5" />
                     {t("bookWash")}
                   </Button>
                 </div>
               ) : null}
 
-              {/* Nothing to suggest (no history, no bookable shop) — generic browse. */}
-              {!previous && !closestBookable ? (
+              {/* No bookable shop nearby — fall back to a generic browse CTA so the
+                  card is never empty. */}
+              {!closestBookable ? (
                 <Button onClick={onBook}>
                   <Icon name="Car" className="h-5 w-5" />
                   {t("bookWash")}
