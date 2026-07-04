@@ -27,6 +27,7 @@ import { Button } from "../components/ui/Button.jsx";
 import { Icon } from "../components/ui/Icon.jsx";
 import { TopBar } from "../components/layout/TopBar.jsx";
 import { CarModelPicker } from "../components/booking/CarModelPicker.jsx";
+import { ServiceDetailsView } from "../components/ServiceDetailsView.jsx";
 
 export function BookingScreen({ shopId }) {
   const router = useRouter();
@@ -58,6 +59,8 @@ export function BookingScreen({ shopId }) {
   // confirmBooking() is still in flight would create a duplicate booking.
   const [submitting, setSubmitting] = useState(false);
   const [bookError, setBookError] = useState(null);
+  // Service whose details modal (description + photo/video) the customer is viewing.
+  const [detailsService, setDetailsService] = useState(null);
   // Per-slot availability for the picked date (counts + cap + closed-day flag).
   const [availability, setAvailability] = useState(null);
   // Vehicle: the booking form keeps a LOCAL copy seeded from the saved vehicle so
@@ -224,16 +227,23 @@ export function BookingScreen({ shopId }) {
   const ownServices = (shop.services ?? [])
     .map((id) => allServices.find((s) => s.id === id))
     .filter(Boolean);
-  const baseServices = ownServices.length
+  // Per-shop details (description + media) for catalogue services, attached so
+  // customers can view them alongside each tile.
+  const shopServiceDetails = shop.serviceDetails ?? {};
+  const baseServices = (ownServices.length
     ? ownServices
-    : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id));
+    : allServices.filter((s) => STANDARD_SERVICE_IDS.includes(s.id))
+  ).map((s) => ({ ...s, ...(shopServiceDetails[s.id] ?? {}) }));
   // The shop's own custom services are always bookable, priced from their row.
   // `name` (vs an i18n id) marks them for label resolution below.
   const customServices = (shop.customServices ?? []).map((c) => ({
     id: c.id,
     price: c.price,
     name: c.name,
-    icon: "Sparkles"
+    icon: "Sparkles",
+    description: c.description ?? null,
+    imageUrl: c.imageUrl ?? null,
+    videoUrl: c.videoUrl ?? null
   }));
   const bookableServices = [...baseServices, ...customServices];
   // Only price/book selections this shop actually offers — a stale global pick
@@ -491,25 +501,39 @@ export function BookingScreen({ shopId }) {
           <div className="mt-3 grid grid-cols-2 gap-2">
             {bookableServices.map((service) => {
               const selected = state.selectedServices.includes(service.id);
+              const hasDetails = Boolean(service.description || service.imageUrl || service.videoUrl);
               return (
-                <button
-                  key={service.id}
-                  type="button"
-                  onClick={() => onService(service.id)}
-                  aria-pressed={selected}
-                  className={`relative flex aspect-square flex-col items-center justify-center gap-2 rounded-xl p-3 text-center transition ${
-                    selected ? "bg-wash-500 text-white shadow-cta" : "border border-black/10 bg-white text-ink"
-                  }`}
-                >
-                  {selected ? (
-                    <Icon name="Check" className="absolute right-2 top-2 h-4 w-4" />
+                <div key={service.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => onService(service.id)}
+                    aria-pressed={selected}
+                    className={`relative flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-xl p-3 text-center transition ${
+                      selected ? "bg-wash-500 text-white shadow-cta" : "border border-black/10 bg-white text-ink"
+                    }`}
+                  >
+                    {selected ? <Icon name="Check" className="absolute right-2 top-2 h-4 w-4" /> : null}
+                    <Icon name={service.icon} className="h-7 w-7" />
+                    <strong className="text-sm leading-tight">{service.name ?? t(service.id)}</strong>
+                    <span className={`text-xs ${selected ? "text-white/90" : "text-neutral-500"}`}>
+                      {formatVnd(service.price)} · {selected ? t("selected") : t("add")}
+                    </span>
+                  </button>
+                  {hasDetails ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailsService({ ...service, name: service.name ?? t(service.id) });
+                      }}
+                      aria-label={t("serviceDetails")}
+                      title={t("serviceDetails")}
+                      className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-wash-600 shadow-sm transition hover:bg-white"
+                    >
+                      <Icon name="Info" className="h-3.5 w-3.5" />
+                    </button>
                   ) : null}
-                  <Icon name={service.icon} className="h-7 w-7" />
-                  <strong className="text-sm leading-tight">{service.name ?? t(service.id)}</strong>
-                  <span className={`text-xs ${selected ? "text-white/90" : "text-neutral-500"}`}>
-                    {formatVnd(service.price)} · {selected ? t("selected") : t("add")}
-                  </span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -784,6 +808,9 @@ export function BookingScreen({ shopId }) {
           </Button>
         ) : null}
         </div>
+        {detailsService ? (
+          <ServiceDetailsView service={detailsService} onClose={() => setDetailsService(null)} />
+        ) : null}
       </section>
   );
 }

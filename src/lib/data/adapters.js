@@ -100,8 +100,18 @@ export function adaptShop(row, origin = userLocation) {
       name: c.name,
       price: c.price ?? 0,
       imageUrl: c.image_url ?? null,
-      isOffer: Boolean(c.is_offer)
+      isOffer: Boolean(c.is_offer),
+      description: c.description ?? null,
+      videoUrl: c.video_url ?? null
     })),
+    // Per-shop details (description + media) for CATALOGUE services, keyed by
+    // service id: { [serviceId]: { description, imageUrl, videoUrl } }.
+    serviceDetails: Object.fromEntries(
+      (row.shop_service_details ?? []).map((d) => [
+        d.service_id,
+        { description: d.description ?? null, imageUrl: d.image_url ?? null, videoUrl: d.video_url ?? null }
+      ])
+    ),
     imagePosition: row.image_position ?? "object-center",
     open: row.is_open ?? true,
     // null (not "") so the cards' `shop.hours ?? t("hours")` fallback fires for a

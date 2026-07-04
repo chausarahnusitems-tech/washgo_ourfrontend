@@ -11,6 +11,7 @@ import {
   Mic,
   Paperclip,
   Send,
+  Sparkles,
   Store,
   Trash2,
   X
@@ -25,7 +26,10 @@ import {
   fetchConversationCustomer,
   fetchConversationReview,
   fetchConversations,
+  fetchCustomServices,
   fetchMessages,
+  rpcRespondAddon,
+  rpcSuggestAddon,
   markConversationRead,
   openConversation,
   reportConversation,
@@ -40,6 +44,8 @@ import { tagLabel } from "./problemTags.js";
 import { SupportTagPicker } from "./SupportTagPicker.jsx";
 import { ConversationReviewPrompt } from "./ConversationReviewPrompt.jsx";
 import { ConversationClosePrompt } from "./ConversationClosePrompt.jsx";
+import { AddonSuggestionCard } from "./AddonSuggestionCard.jsx";
+import { AddonComposerDialog } from "./AddonComposerDialog.jsx";
 import { ReportDialog } from "./ReportDialog.jsx";
 import { VoiceMessage } from "./VoiceMessage.jsx";
 
@@ -189,6 +195,11 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   const [recording, setRecording] = useState(false);
   const [recElapsed, setRecElapsed] = useState(0);
   const [showReport, setShowReport] = useState(false);
+  // Owner add-on suggestion composer + the shop's custom services for its picker.
+  const [showAddonComposer, setShowAddonComposer] = useState(false);
+  const [shopCustomServices, setShopCustomServices] = useState([]);
+  const [addonBusy, setAddonBusy] = useState(false);
+  const [respondingId, setRespondingId] = useState(null);
   const [reportBusy, setReportBusy] = useState(false);
   // Object-URL thumbnail for a staged image attachment (revoked on change).
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -245,6 +256,10 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
   // Either party of a customer<->owner (shop) chat can report it to the admins.
   // Admins are the recipients, so they don't see a report button.
   const canReport = !!activeConv && activeConv.kind === "shop" && !isAdmin;
+  // The shop owner (or admin) viewing a customer's per-booking thread — the party
+  // who can suggest add-ons. The customer is activeConv.createdBy.
+  const isShopOwnerView =
+    !!activeConv && activeConv.kind === "shop" && !!activeConv.createdBy && activeConv.createdBy !== uid;
 
   const activeConvs = useMemo(() => sortActive(conversations.filter((c) => !c.archived)), [conversations]);
   const archivedConvs = useMemo(
@@ -689,6 +704,66 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
     });
   }
 
+  // Owner: load the shop's custom services (for the picker) then open the composer.
+  async function openAddonComposer() {
+    try {
+      const rows = activeConv?.shopId ? await fetchCustomServices(supabase, activeConv.shopId) : [];
+      setShopCustomServices(rows ?? []);
+    } catch (err) {
+      console.error("[washgo] load custom services failed", err);
+      setShopCustomServices([]);
+    }
+    setShowAddonComposer(true);
+  }
+
+  // Owner: upload any photos to the chat bucket, then record the suggestion.
+  async function onSuggestAddon({ name, price, note, files, customServiceId }) {
+    if (!activeConv || addonBusy) return;
+    setAddonBusy(true);
+    try {
+      const photos = [];
+      for (const file of files ?? []) {
+        if ((file.type || "").startsWith("image/") && file.size > IMAGE_MAX_BYTES) {
+          window.alert(t("imageTooLarge"));
+          continue;
+        }
+        const att = await uploadChatAttachment(supabase, activeConv.id, uid, file);
+        photos.push(att.url);
+      }
+      await rpcSuggestAddon(supabase, {
+        conv: activeConv.id,
+        name,
+        price,
+        note: note || null,
+        photos,
+        customServiceId
+      });
+      setShowAddonComposer(false);
+      await loadMessages();
+      await reloadList();
+    } catch (err) {
+      console.error("[washgo] suggest add-on failed", err);
+      window.alert(err?.message || "Could not send the suggestion.");
+    } finally {
+      setAddonBusy(false);
+    }
+  }
+
+  // Customer: accept/reject a pending suggestion.
+  async function onRespondAddon(suggestionId, accept) {
+    if (respondingId) return;
+    setRespondingId(suggestionId);
+    try {
+      await rpcRespondAddon(supabase, suggestionId, accept);
+      await loadMessages();
+      await reloadList();
+    } catch (err) {
+      console.error("[washgo] respond add-on failed", err);
+    } finally {
+      setRespondingId(null);
+    }
+  }
+
   async function onArchive(archived) {
     if (!activeConv) return;
     try {
@@ -1093,6 +1168,17 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                           <span className="h-px flex-1 bg-wash-200" aria-hidden="true" />
                         </div>
                       )}
+                      {m.addon ? (
+                        <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
+                          <AddonSuggestionCard
+                            suggestion={m.addon}
+                            canRespond={!isAdmin && activeConv?.createdBy === uid && !isClosed}
+                            busy={respondingId === m.addon.id}
+                            onAccept={() => onRespondAddon(m.addon.id, true)}
+                            onReject={() => onRespondAddon(m.addon.id, false)}
+                          />
+                        </div>
+                      ) : (
                       <div className={cx("flex flex-col", mine ? "items-end" : "items-start", newGroup ? "mt-3" : "mt-0.5")}>
                         <div
                           className={cx(
@@ -1145,6 +1231,7 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                           )}
                         </div>
                       </div>
+                      )}
                     </Fragment>
                   );
                 })}
@@ -1259,6 +1346,18 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
                     >
                       <Mic className="h-5 w-5" aria-hidden="true" />
                     </button>
+                    {isShopOwnerView && activeConv?.bookingId && (
+                      <button
+                        type="button"
+                        onClick={openAddonComposer}
+                        disabled={sending}
+                        aria-label={t("suggestAddon")}
+                        title={t("suggestAddon")}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-wash-500 hover:bg-wash-50 disabled:opacity-50"
+                      >
+                        <Sparkles className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                    )}
                     <input
                       ref={inputRef}
                       value={body}
@@ -1303,6 +1402,17 @@ export function ChatWorkspace({ kindFilter = null, allowSupport = false, initial
       {showReport && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
           <ReportDialog onSubmit={onReport} onCancel={() => setShowReport(false)} busy={reportBusy} />
+        </div>
+      )}
+
+      {showAddonComposer && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <AddonComposerDialog
+            services={shopCustomServices}
+            busy={addonBusy}
+            onSubmit={onSuggestAddon}
+            onCancel={() => setShowAddonComposer(false)}
+          />
         </div>
       )}
     </div>

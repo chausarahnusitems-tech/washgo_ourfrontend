@@ -18,7 +18,8 @@ export async function fetchCatalog(supabase) {
       .from("shops")
       .select(
         "*, shop_services(service_id), shop_photos(url, sort_order, is_cover), " +
-          "shop_custom_services(id, name, price, is_offer, image_url)"
+          "shop_custom_services(id, name, price, is_offer, image_url, description, video_url), " +
+          "shop_service_details(service_id, description, image_url, video_url)"
       )
       .eq("status", "approved")
       .eq("published", true),
@@ -776,6 +777,8 @@ export async function updateCustomService(supabase, id, patch) {
   if ("price" in patch) allowed.price = Math.round(patch.price);
   if ("isOffer" in patch) allowed.is_offer = Boolean(patch.isOffer);
   if ("imageUrl" in patch) allowed.image_url = patch.imageUrl ?? null;
+  if ("description" in patch) allowed.description = patch.description ?? null;
+  if ("videoUrl" in patch) allowed.video_url = patch.videoUrl ?? null;
   return unwrap(
     await supabase.from("shop_custom_services").update(allowed).eq("id", id).select("*").single()
   );
@@ -797,6 +800,54 @@ export async function uploadServiceImage(supabase, shopId, serviceId, file) {
   if (error) throw error;
   const { data: pub } = supabase.storage.from("shop-photos").getPublicUrl(path);
   return `${pub.publicUrl}?t=${Date.now()}`;
+}
+
+// Upload a short per-service video to the shop-videos bucket under
+// '<shopId>/services/<serviceKey>.<ext>' (shop-photos rejects video MIME, so
+// videos must live in shop-videos). `serviceKey` is a custom-service uuid or a
+// catalogue service id. Returns the cache-busted public URL.
+export async function uploadServiceVideo(supabase, shopId, serviceKey, file) {
+  const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+  const path = `${shopId}/services/${serviceKey}.${ext}`;
+  const { error } = await supabase.storage
+    .from("shop-videos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  const { data: pub } = supabase.storage.from("shop-videos").getPublicUrl(path);
+  return `${pub.publicUrl}?t=${Date.now()}`;
+}
+
+// Per-shop details (description + media) for CATALOGUE services, keyed by the
+// catalogue service id. (Custom services carry their own detail columns.)
+export async function fetchShopServiceDetails(supabase, shopId) {
+  return unwrap(
+    await supabase
+      .from("shop_service_details")
+      .select("service_id, description, image_url, video_url")
+      .eq("shop_id", shopId)
+  );
+}
+
+// Create/replace a catalogue service's per-shop details. The details editor holds
+// all fields, so this writes the full set (a missing field clears that field).
+export async function upsertShopServiceDetails(supabase, shopId, serviceId, { description, imageUrl, videoUrl }) {
+  return unwrap(
+    await supabase
+      .from("shop_service_details")
+      .upsert(
+        {
+          shop_id: shopId,
+          service_id: serviceId,
+          description: description ?? null,
+          image_url: imageUrl ?? null,
+          video_url: videoUrl ?? null,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "shop_id,service_id" }
+      )
+      .select("service_id, description, image_url, video_url")
+      .single()
+  );
 }
 
 // Per-slot availability for a shop+date (counts + cap + closed). RLS-safe RPC.
@@ -945,7 +996,10 @@ export async function fetchMessages(supabase, conversationId) {
   return unwrap(
     await supabase
       .from("messages")
-      .select("id, sender_id, body, attachment_url, attachment_type, created_at")
+      .select(
+        "id, sender_id, body, attachment_url, attachment_type, created_at, addon_suggestion_id, " +
+          "addon:booking_addon_suggestions(id, name, price, note, photo_urls, status)"
+      )
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
   );
@@ -993,6 +1047,31 @@ export async function uploadChatAttachment(supabase, conversationId, uid, file) 
     url: `${pub.publicUrl}?t=${Date.now()}`,
     type: mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "image"
   };
+}
+
+// ---- Add-on suggestions in a booking chat ----------------------------------
+
+// Owner suggests an add-on in a booking thread. `photos` is an array of URLs —
+// upload each with uploadChatAttachment first. Owner-only (enforced in the RPC).
+export async function rpcSuggestAddon(
+  supabase,
+  { conv, name, price, note = null, photos = [], customServiceId = null }
+) {
+  return unwrap(
+    await supabase.rpc("suggest_addon", {
+      p_conv: conv,
+      p_name: name,
+      p_price: Math.round(price || 0),
+      p_note: note,
+      p_photos: photos,
+      p_custom_service_id: customServiceId
+    })
+  );
+}
+
+// Customer accepts (true) or rejects (false) a pending add-on suggestion.
+export async function rpcRespondAddon(supabase, suggestionId, accept) {
+  return unwrap(await supabase.rpc("respond_addon", { p_suggestion: suggestionId, p_accept: accept }));
 }
 
 // Close a thread (requester, shop owner participant, or admin). Idempotent.
