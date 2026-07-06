@@ -1,23 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ImagePlus, Tag, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, ImagePlus, Pencil, Tag, Trash2 } from "lucide-react";
 import { useApp } from "../../lib/AppContext.jsx";
 import { createClient } from "../../lib/supabase/client.js";
 import {
   addCustomService,
   fetchCustomServices,
+  fetchShopServiceDetails,
   removeCustomService,
   updateCustomService,
-  uploadServiceImage
+  uploadServiceImage,
+  uploadServiceVideo,
+  upsertShopServiceDetails
 } from "../../lib/data/api.js";
 import { cx } from "../../lib/cx.js";
 import { Button } from "../../components/ui/Button.jsx";
+import { ServiceDetailsModal } from "../../components/owner/ServiceDetailsModal.jsx";
 import { formatVnd } from "./format.js";
 import { SERVICE_OPTION_GROUPS, CUSTOM_SERVICE, SERVICE_PRICE_BY_NAME } from "../../data/serviceOptions.js";
 
 // Two parts: pick from the shared catalogue (persisted to shop_services), and
 // add fully custom services (name + price, optionally flagged as an "offer").
+// Each service — catalogue or custom — can carry a customer-facing description +
+// photo/video, edited via a shared "Details" modal.
 export function OwnerShopServices({ shop, saveServices, reload }) {
   const { catalog, t } = useApp();
   const services = catalog.services ?? [];
@@ -33,6 +39,12 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
   const [isOffer, setIsOffer] = useState(false);
   const [adding, setAdding] = useState(false);
   const [picked, setPicked] = useState("");
+
+  // Per-shop details (description + media) for CATALOGUE services, keyed by id.
+  const [catalogueDetails, setCatalogueDetails] = useState({});
+  // The service whose details modal is open: { kind, key, name, initial }.
+  const [detailsTarget, setDetailsTarget] = useState(null);
+  const [detailsBusy, setDetailsBusy] = useState(false);
 
   // Pick a service from the common (WÜRTH-style) menu to pre-fill name + price,
   // or "Other" to type a fully custom one. The fields stay editable after.
@@ -52,6 +64,18 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
     fetchCustomServices(supabase, shop.id)
       .then(setCustom)
       .catch((err) => console.error("[washgo] fetch custom services failed", err));
+    fetchShopServiceDetails(supabase, shop.id)
+      .then((rows) =>
+        setCatalogueDetails(
+          Object.fromEntries(
+            (rows ?? []).map((d) => [
+              d.service_id,
+              { description: d.description ?? "", imageUrl: d.image_url ?? null, videoUrl: d.video_url ?? null }
+            ])
+          )
+        )
+      )
+      .catch((err) => console.error("[washgo] fetch service details failed", err));
   }, [supabase, shop.id]);
 
   function toggle(id) {
@@ -111,15 +135,79 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
     }
   }
 
+  function openCustomDetails(c) {
+    setDetailsTarget({
+      kind: "custom",
+      key: c.id,
+      name: c.name,
+      initial: { description: c.description ?? "", imageUrl: c.image_url ?? null, videoUrl: c.video_url ?? null }
+    });
+  }
+
+  function openCatalogueDetails(service) {
+    const d = catalogueDetails[service.id] ?? {};
+    setDetailsTarget({
+      kind: "catalogue",
+      key: service.id,
+      name: t(service.id),
+      initial: { description: d.description ?? "", imageUrl: d.imageUrl ?? null, videoUrl: d.videoUrl ?? null }
+    });
+  }
+
+  // Upload any new media (per service kind), then persist description + media.
+  async function onSaveDetails(patch) {
+    const target = detailsTarget;
+    if (!target) return;
+    setDetailsBusy(true);
+    try {
+      let imageUrl = target.initial.imageUrl ?? null;
+      if (patch.imageFile) imageUrl = await uploadServiceImage(supabase, shop.id, target.key, patch.imageFile);
+      else if (patch.removeImage) imageUrl = null;
+
+      let videoUrl = target.initial.videoUrl ?? null;
+      if (patch.videoFile) videoUrl = await uploadServiceVideo(supabase, shop.id, target.key, patch.videoFile);
+      else if (patch.removeVideo) videoUrl = null;
+
+      if (target.kind === "custom") {
+        const row = await updateCustomService(supabase, target.key, {
+          description: patch.description,
+          imageUrl,
+          videoUrl
+        });
+        setCustom((prev) => prev.map((x) => (x.id === row.id ? row : x)));
+      } else {
+        await upsertShopServiceDetails(supabase, shop.id, target.key, {
+          description: patch.description,
+          imageUrl,
+          videoUrl
+        });
+        setCatalogueDetails((prev) => ({
+          ...prev,
+          [target.key]: { description: patch.description, imageUrl, videoUrl }
+        }));
+      }
+      setDetailsTarget(null);
+    } catch (err) {
+      console.error("[washgo] save service details failed", err);
+      window.alert(err?.message || "Could not save the details.");
+    } finally {
+      setDetailsBusy(false);
+    }
+  }
+
+  const catalogueHasDetails = (id) => {
+    const d = catalogueDetails[id];
+    return Boolean(d && (d.description || d.imageUrl || d.videoUrl));
+  };
+
   return (
     <div className="grid gap-8">
       {/* Shared catalogue */}
       <section>
-        <h3 className="text-sm font-black uppercase tracking-wide text-neutral-500">
-          From the catalogue
-        </h3>
+        <h3 className="text-sm font-black uppercase tracking-wide text-neutral-500">From the catalogue</h3>
         <p className="mt-1 mb-3 text-sm text-neutral-500">
-          Select the standard services customers can book at this shop.
+          Select the standard services customers can book at this shop. Use the pencil to add a
+          description, photo or video customers will see.
         </p>
         {services.length === 0 ? (
           <p className="text-sm text-neutral-400">No catalogue services available.</p>
@@ -128,13 +216,13 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
             {services.map((service) => {
               const on = selected.has(service.id);
               return (
-                <li key={service.id}>
+                <li key={service.id} className="flex items-stretch gap-2">
                   <button
                     type="button"
                     onClick={() => toggle(service.id)}
                     aria-pressed={on}
                     className={cx(
-                      "flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition",
+                      "flex flex-1 items-center gap-3 rounded-2xl border p-3 text-left transition",
                       on ? "border-wash-300 bg-wash-50" : "border-black/10 bg-white hover:bg-neutral-50"
                     )}
                   >
@@ -150,6 +238,20 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
                       <span className="block truncate text-sm font-bold text-ink">{t(service.id)}</span>
                       <span className="block text-xs text-neutral-500">{formatVnd(service.price)}</span>
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openCatalogueDetails(service)}
+                    aria-label={t("serviceDetails")}
+                    title={t("serviceDetails")}
+                    className={cx(
+                      "grid w-11 shrink-0 place-items-center rounded-2xl border transition",
+                      catalogueHasDetails(service.id)
+                        ? "border-wash-300 bg-wash-50 text-wash-600"
+                        : "border-black/10 bg-white text-neutral-400 hover:bg-neutral-50"
+                    )}
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </li>
               );
@@ -169,13 +271,11 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
 
       {/* Custom services */}
       <section>
-        <h3 className="text-sm font-black uppercase tracking-wide text-neutral-500">
-          Your own services
-        </h3>
+        <h3 className="text-sm font-black uppercase tracking-wide text-neutral-500">Your own services</h3>
         <p className="mt-1 mb-3 text-sm text-neutral-500">
-          Add services unique to your shop — customers can book these alongside the
-          catalogue ones. Pick from the common menu to pre-fill the name and a suggested
-          price, or add your own. Flag any that are special offers.
+          Add services unique to your shop — customers can book these alongside the catalogue ones.
+          Pick from the common menu to pre-fill the name and a suggested price, or add your own. Flag
+          any that are special offers, and use Details to add a description, photo or video.
         </p>
 
         {custom.length > 0 && (
@@ -184,9 +284,7 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
               <CustomServiceRow
                 key={c.id}
                 service={c}
-                supabase={supabase}
-                shopId={shop.id}
-                onUpdated={(row) => setCustom((prev) => prev.map((x) => (x.id === row.id ? row : x)))}
+                onOpenDetails={() => openCustomDetails(c)}
                 onDelete={() => deleteService(c.id)}
               />
             ))}
@@ -218,65 +316,57 @@ export function OwnerShopServices({ shop, saveServices, reload }) {
           </label>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
-          <label className="grid gap-1">
-            <span className="text-xs font-black uppercase tracking-wide text-neutral-500">Service name</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Engine bay cleaning"
-              className="min-h-11 rounded-2xl border border-black/10 px-3 text-sm outline-none focus:border-wash-500"
-            />
-          </label>
-          <label className="grid gap-1">
-            <span className="text-xs font-black uppercase tracking-wide text-neutral-500">Price (₫)</span>
-            <input
-              type="number"
-              min="0"
-              step="1000"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="50000"
-              className="min-h-11 w-32 rounded-2xl border border-black/10 px-3 text-sm outline-none focus:border-wash-500"
-            />
-          </label>
-          <label className="flex items-center gap-2 pb-2 text-sm font-semibold text-ink">
-            <input type="checkbox" checked={isOffer} onChange={(e) => setIsOffer(e.target.checked)} className="h-4 w-4" />
-            Offer
-          </label>
-          <Button onClick={addService} disabled={adding || !name.trim() || price === ""} className="min-h-11">
-            {adding ? "…" : "Add service"}
-          </Button>
+            <label className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-wide text-neutral-500">Service name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Engine bay cleaning"
+                className="min-h-11 rounded-2xl border border-black/10 px-3 text-sm outline-none focus:border-wash-500"
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs font-black uppercase tracking-wide text-neutral-500">Price (₫)</span>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="50000"
+                className="min-h-11 w-32 rounded-2xl border border-black/10 px-3 text-sm outline-none focus:border-wash-500"
+              />
+            </label>
+            <label className="flex items-center gap-2 pb-2 text-sm font-semibold text-ink">
+              <input type="checkbox" checked={isOffer} onChange={(e) => setIsOffer(e.target.checked)} className="h-4 w-4" />
+              Offer
+            </label>
+            <Button onClick={addService} disabled={adding || !name.trim() || price === ""} className="min-h-11">
+              {adding ? "…" : "Add service"}
+            </Button>
           </div>
         </div>
       </section>
+
+      {detailsTarget && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <ServiceDetailsModal
+            title={detailsTarget.name}
+            initial={detailsTarget.initial}
+            busy={detailsBusy}
+            onSave={onSaveDetails}
+            onCancel={() => setDetailsTarget(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-// One custom service row with an optional photo (item 18). The image lands in the
-// shop-photos bucket under <shopId>/services/<serviceId> and its URL is saved on
-// the shop_custom_services row.
-function CustomServiceRow({ service, supabase, shopId, onUpdated, onDelete }) {
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-
-  async function onFile(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    try {
-      const url = await uploadServiceImage(supabase, shopId, service.id, file);
-      const row = await updateCustomService(supabase, service.id, { imageUrl: url });
-      onUpdated(row);
-    } catch (err) {
-      console.error("[washgo] service image upload failed", err);
-      window.alert(err?.message || "Could not upload the image.");
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
+// One custom service row: thumbnail + name/offer + price, with Details (description
+// + photo/video via the shared modal) and Delete actions.
+function CustomServiceRow({ service, onOpenDetails, onDelete }) {
+  const { t } = useApp();
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3">
       <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-neutral-100">
@@ -297,21 +387,15 @@ function CustomServiceRow({ service, supabase, shopId, onUpdated, onDelete }) {
         </span>
         <span className="block text-xs text-neutral-500">{formatVnd(service.price)}</span>
       </span>
-      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden" />
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={busy}
-        aria-label={service.image_url ? "Replace photo" : "Add photo"}
-        className="grid h-9 w-9 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-40"
-      >
-        <ImagePlus className="h-4 w-4" aria-hidden="true" />
-      </button>
+      <Button variant="secondary" onClick={onOpenDetails} className="min-h-9 shrink-0 px-3 text-xs">
+        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+        {t("details")}
+      </Button>
       <button
         type="button"
         onClick={onDelete}
-        aria-label="Remove"
-        className="grid h-9 w-9 place-items-center rounded-full text-red-600 transition hover:bg-red-50"
+        aria-label={t("remove")}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-red-600 transition hover:bg-red-50"
       >
         <Trash2 className="h-4 w-4" aria-hidden="true" />
       </button>
