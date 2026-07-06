@@ -996,10 +996,7 @@ export async function fetchMessages(supabase, conversationId) {
   return unwrap(
     await supabase
       .from("messages")
-      .select(
-        "id, sender_id, body, attachment_url, attachment_type, created_at, addon_suggestion_id, " +
-          "addon:booking_addon_suggestions(id, name, price, note, photo_urls, status)"
-      )
+      .select("id, sender_id, body, attachment_url, attachment_type, created_at")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: true })
   );
@@ -1047,31 +1044,6 @@ export async function uploadChatAttachment(supabase, conversationId, uid, file) 
     url: `${pub.publicUrl}?t=${Date.now()}`,
     type: mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "image"
   };
-}
-
-// ---- Add-on suggestions in a booking chat ----------------------------------
-
-// Owner suggests an add-on in a booking thread. `photos` is an array of URLs —
-// upload each with uploadChatAttachment first. Owner-only (enforced in the RPC).
-export async function rpcSuggestAddon(
-  supabase,
-  { conv, name, price, note = null, photos = [], customServiceId = null }
-) {
-  return unwrap(
-    await supabase.rpc("suggest_addon", {
-      p_conv: conv,
-      p_name: name,
-      p_price: Math.round(price || 0),
-      p_note: note,
-      p_photos: photos,
-      p_custom_service_id: customServiceId
-    })
-  );
-}
-
-// Customer accepts (true) or rejects (false) a pending add-on suggestion.
-export async function rpcRespondAddon(supabase, suggestionId, accept) {
-  return unwrap(await supabase.rpc("respond_addon", { p_suggestion: suggestionId, p_accept: accept }));
 }
 
 // Close a thread (requester, shop owner participant, or admin). Idempotent.
